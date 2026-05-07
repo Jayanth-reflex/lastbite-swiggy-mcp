@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { readSessionCookie } from "@/lib/session";
+import {
+  effectiveMode,
+  getUserMode,
+  realOrdersGloballyEnabled,
+} from "@/lib/user-prefs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,9 +14,13 @@ export async function GET(req: Request) {
   if (!session) {
     return NextResponse.json({ authenticated: false }, { status: 401 });
   }
+  const userMode = await getUserMode(session.phone);
+  const eff = await effectiveMode(session.phone);
   return NextResponse.json({
     authenticated: true,
     phone: session.phone,
-    demoMode: process.env.LB_REAL_ORDERS !== "1",
+    mode: userMode,
+    effectiveMode: eff,
+    realOrdersAvailable: realOrdersGloballyEnabled(),
   });
 }

@@ -2,8 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { ArrowUp, Sparkles, AlertCircle, RefreshCw } from "lucide-react";
+import { ArrowUp, Sparkles, AlertCircle, RefreshCw, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface Message {
@@ -12,10 +11,14 @@ interface Message {
   ts: number;
 }
 
+type OrderMode = "demo" | "live";
+
 interface Me {
   authenticated: boolean;
   phone?: string;
-  demoMode?: boolean;
+  mode?: OrderMode;
+  effectiveMode?: OrderMode;
+  realOrdersAvailable?: boolean;
 }
 
 const SUGGESTIONS = [
@@ -43,17 +46,66 @@ export default function NewOrderPage() {
       }
       const data = (await res.json()) as Me;
       setMe(data);
+      const isDemo = data.effectiveMode === "demo";
       setMessages([
         {
           role: "bot",
           ts: Date.now(),
-          text: data.demoMode
+          text: isDemo
             ? "Hi! Tell me what you'd like to order — e.g. \"biryani from Paradise, ₹500\". I'll walk you through three confirmation gates. We're in demo mode, so no real Swiggy order will be placed."
             : "Hi! Tell me what you'd like to order — e.g. \"biryani from Paradise, ₹500\". I'll walk you through three confirmation gates and a 30-second grace timer.",
         },
       ]);
     })();
   }, [router]);
+
+  async function flipMode(target: OrderMode) {
+    if (!me) return;
+    if (target === "live") {
+      if (!me.realOrdersAvailable) {
+        setMessages((m) => [
+          ...m,
+          {
+            role: "system",
+            text: "Live mode is disabled by the host. The site owner needs to set LB_REAL_ORDERS=1 first.",
+            ts: Date.now(),
+          },
+        ]);
+        return;
+      }
+      const ok = window.confirm(
+        "Switch to LIVE mode?\n\nYour next confirmed order will place a REAL Swiggy order (cash on delivery). Three confirmation gates and a 30-second grace timer still apply.\n\nClick OK to switch, Cancel to stay in demo.",
+      );
+      if (!ok) return;
+    }
+    const res = await fetch("/api/me/mode", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ mode: target }),
+    });
+    if (!res.ok) {
+      setMessages((m) => [
+        ...m,
+        { role: "system", text: `Couldn't switch mode (HTTP ${res.status}).`, ts: Date.now() },
+      ]);
+      return;
+    }
+    const json = (await res.json()) as { mode: OrderMode; effectiveMode: OrderMode; realOrdersAvailable: boolean };
+    setMe({ ...me, ...json });
+    setMessages((m) => [
+      ...m,
+      {
+        role: "system",
+        text:
+          json.effectiveMode === "live"
+            ? "Switched to LIVE mode. Real Swiggy orders will be placed on your final YES."
+            : json.mode === "live"
+              ? "Saved your preference as LIVE, but the host hasn't enabled live orders globally — staying in demo for now."
+              : "Switched to DEMO mode. No real orders will be placed.",
+        ts: Date.now(),
+      },
+    ]);
+  }
 
   // Auto-scroll on new messages.
   useEffect(() => {
@@ -107,19 +159,49 @@ export default function NewOrderPage() {
     );
   }
 
+  const isDemo = me.effectiveMode !== "live";
+
   return (
     <main className="flex flex-1 flex-col">
-      {me.demoMode && (
-        <div className="border-b border-orange-200/60 bg-orange-50/60 dark:bg-orange-500/10">
-          <div className="mx-auto flex w-full max-w-3xl items-center gap-2 px-6 py-2 text-xs text-orange-900 dark:text-orange-200">
-            <Sparkles className="h-3.5 w-3.5 shrink-0" />
-            <span>
-              <strong>Demo mode</strong> — confirmations work end-to-end, but the final order is
-              not actually placed on Swiggy. No money, no delivery.
-            </span>
-          </div>
+      <div
+        className={
+          isDemo
+            ? "border-b border-orange-200/60 bg-orange-50/60 dark:bg-orange-500/10"
+            : "border-b border-rose-300/70 bg-rose-50/70 dark:bg-rose-500/10"
+        }
+      >
+        <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 py-2 text-xs">
+          <span
+            className={
+              isDemo
+                ? "inline-flex items-center gap-1.5 text-orange-900 dark:text-orange-200"
+                : "inline-flex items-center gap-1.5 text-rose-900 dark:text-rose-200"
+            }
+          >
+            {isDemo ? (
+              <>
+                <Sparkles className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  <strong>Demo mode</strong> — confirmations work end-to-end, but the final order
+                  is not actually placed on Swiggy. No money, no delivery.
+                </span>
+              </>
+            ) : (
+              <>
+                <Zap className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  <strong>Live mode</strong> — your final YES will place a real Swiggy COD order.
+                </span>
+              </>
+            )}
+          </span>
+          <ModeToggle
+            mode={me.effectiveMode ?? "demo"}
+            available={me.realOrdersAvailable ?? false}
+            onFlip={flipMode}
+          />
         </div>
-      )}
+      </div>
 
       <section
         ref={scrollRef}
@@ -197,6 +279,44 @@ export default function NewOrderPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+function ModeToggle({
+  mode,
+  available,
+  onFlip,
+}: {
+  mode: OrderMode;
+  available: boolean;
+  onFlip: (target: OrderMode) => void;
+}) {
+  return (
+    <div className="ml-auto inline-flex items-center gap-1 rounded-full border border-border/60 bg-background p-0.5 text-[11px] font-medium">
+      <button
+        type="button"
+        onClick={() => onFlip("demo")}
+        className={
+          mode === "demo"
+            ? "rounded-full bg-foreground px-2.5 py-1 text-background"
+            : "rounded-full px-2.5 py-1 text-muted-foreground hover:text-foreground"
+        }
+      >
+        Demo
+      </button>
+      <button
+        type="button"
+        onClick={() => onFlip("live")}
+        title={available ? "Switch to live (real orders)" : "Live disabled by host"}
+        className={
+          mode === "live"
+            ? "rounded-full bg-rose-600 px-2.5 py-1 text-white"
+            : `rounded-full px-2.5 py-1 ${available ? "text-muted-foreground hover:text-foreground" : "cursor-not-allowed text-muted-foreground/40"}`
+        }
+      >
+        Live
+      </button>
+    </div>
   );
 }
 

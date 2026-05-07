@@ -379,10 +379,13 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
       };
     }
 
-    // Demo mode: NEVER call Swiggy place_food_order unless explicitly
-    // opted in via LB_REAL_ORDERS=1 on the server. Default-safe to
-    // protect users + tests from accidental ₹ charges.
-    if (process.env.LB_REAL_ORDERS !== "1") {
+    // Two-layer demo guard:
+    //   1) Server kill-switch (LB_REAL_ORDERS) — no real orders unless set
+    //   2) Per-user preference (mode:<phone> in Redis, default "demo")
+    // The placer ONLY calls real place_food_order when BOTH allow it.
+    const { effectiveMode } = await import("@/lib/user-prefs");
+    const eff = await effectiveMode(state.userId);
+    if (eff === "demo") {
       safeLog("agent.placer.demo-mode", { userId: state.userId });
       const demoId = `demo_${Date.now().toString(36)}`;
       return {
