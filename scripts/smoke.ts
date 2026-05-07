@@ -197,6 +197,22 @@ async function runAbandonedTimeoutPath() {
   );
 }
 
+async function runFinalGateStopRegressionPath() {
+  console.log("\n=== Regression: STOP at final gate must cancel, never place ===\n");
+  const user = "+919876500008";
+  for (const text of ["biryani ₹500", "yes", "yes"]) {
+    await processTurn({ userId: user, text, swiggy });
+  }
+  // Now paused at final gate. Send STOP — must cancel, not commit.
+  const result = await processTurn({ userId: user, text: "STOP", swiggy });
+  check(
+    "STOP at final gate → status=cancelled (not placed)",
+    result.status === "cancelled" &&
+      result.reply?.toLowerCase().includes("cancel") === true,
+    `status=${result.status} reply=${JSON.stringify(result.reply)}`,
+  );
+}
+
 async function runConcurrentLockPath() {
   console.log("\n=== Per-user mutex: concurrent inbound rejected ===\n");
   const user = "+919876500007";
@@ -227,6 +243,7 @@ async function main() {
   await runUnclearReplyPath();
   await runStateLeakRegressionPath();
   await runAbandonedTimeoutPath();
+  await runFinalGateStopRegressionPath();
   await runConcurrentLockPath();
   await swiggy.close();
 
