@@ -140,9 +140,12 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
     const result = await generateText({
       model: agentModel(),
       tools,
-      stopWhen: stepCountIs(10),
+      stopWhen: stepCountIs(12),
       maxRetries: 2,
-      abortSignal: AbortSignal.timeout(20_000),
+      // Each MCP tool call to Swiggy can take 1-2s; the LLM may need
+      // search_restaurants → search_menu → update_food_cart → get_food_cart.
+      // 50s leaves headroom under the 60s Vercel function maxDuration.
+      abortSignal: AbortSignal.timeout(50_000),
       system: `${SEARCHER_SYSTEM}\n\nUse addressId="${addressId}" for every tool that requires one. Do NOT call get_addresses.`,
       prompt: state.query,
     });
