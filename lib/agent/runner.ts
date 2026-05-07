@@ -96,10 +96,15 @@ async function runTurn({ userId, text, swiggy }: RunnerInput): Promise<RunnerRep
     const init: Partial<LastBiteStateT> = {
       userId,
       query: text,
+      // Reset addressId on each fresh run so the searcher re-fetches.
+      // Stale IDs surface when Swiggy invalidates them post-token-refresh
+      // ("Address with ID xxx not found").
+      addressId: null,
       gatesPassed: {},
       cart: null,
       orderId: null,
       status: "in-progress",
+      failureReason: null,
     };
     await graph.invoke(init as LastBiteStateT, config);
   }

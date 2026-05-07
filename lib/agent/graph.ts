@@ -205,7 +205,9 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
     safeLog("agent.searcher.intent", intent);
 
     // 1) Search restaurants. Prefer the user's restaurant hint when
-    //    given; otherwise search by dish.
+    //    given; otherwise search by dish. If we get "Address not found"
+    //    we re-fetch addresses once and retry — covers the case where a
+    //    cached addressId became stale (e.g. after token refresh).
     const restaurantQuery = intent.restaurantHint ?? intent.dish;
     let searchRes;
     try {
@@ -214,10 +216,33 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
         query: restaurantQuery,
       });
     } catch (err) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: `Swiggy couldn't run that search: ${(err as Error).message.split("\n")[0]}`,
-      };
+      const msg = (err as Error).message;
+      if (/Address.*not found|address.*invalid/i.test(msg)) {
+        safeLog("agent.searcher.address-stale", { staleId: addressId });
+        try {
+          const addrs2 = await swiggy.callTool("get_addresses", {});
+          const fresh = extractFirstAddressId(addrs2);
+          if (fresh && fresh !== addressId) {
+            addressId = fresh;
+            searchRes = await swiggy.callTool("search_restaurants", {
+              addressId,
+              query: restaurantQuery,
+            });
+          } else {
+            throw err;
+          }
+        } catch (retryErr) {
+          return {
+            status: "failed" as RunStatus,
+            failureReason: `Swiggy couldn't run that search: ${(retryErr as Error).message.split("\n")[0]}`,
+          };
+        }
+      } else {
+        return {
+          status: "failed" as RunStatus,
+          failureReason: `Swiggy couldn't run that search: ${msg.split("\n")[0]}`,
+        };
+      }
     }
     const restaurant = pickBestRestaurant(searchRes, intent.restaurantHint);
     if (!restaurant) {
