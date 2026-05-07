@@ -10,7 +10,8 @@
     "smoke": "tsx --tsconfig tsconfig.json scripts/smoke.ts",
     "capture": "tsx --tsconfig tsconfig.json scripts/capture-real-fixtures.ts",
     "probe": "tsx --tsconfig tsconfig.json scripts/real-mcp-probe.ts",
-    "snapshot-cart": "tsx --tsconfig tsconfig.json scripts/snapshot-cart.ts"
+    "snapshot-cart": "tsx --tsconfig tsconfig.json scripts/snapshot-cart.ts",
+    "live-e2e": "tsx --tsconfig tsconfig.json scripts/live-e2e.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.75",
