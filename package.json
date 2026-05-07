@@ -6,21 +6,46 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "smoke": "tsx --tsconfig tsconfig.json scripts/smoke.ts",
+    "capture": "tsx --tsconfig tsconfig.json scripts/capture-real-fixtures.ts",
+    "probe": "tsx --tsconfig tsconfig.json scripts/real-mcp-probe.ts",
+    "snapshot-cart": "tsx --tsconfig tsconfig.json scripts/snapshot-cart.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.75",
+    "@ai-sdk/groq": "^3.0.38",
+    "@ai-sdk/mcp": "^1.0.40",
+    "@langchain/core": "^1.1.45",
+    "@langchain/langgraph": "^1.3.0",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.1",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.38.0",
+    "ai": "^6.0.175",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "lucide-react": "^1.14.0",
     "next": "16.2.5",
+    "pg": "^8.20.0",
+    "radix-ui": "^1.4.3",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "shadcn": "^4.7.0",
+    "tailwind-merge": "^3.5.0",
+    "tw-animate-css": "^1.4.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pg": "^8.20.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.5",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }

@@ -33,6 +33,15 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# Captured during `npm run capture` — contains client_id + secret.
+.swiggy-oauth-client.json
+
+# Real Swiggy MCP captures embed user PII (delivery addresses, masked
+# phone, cart subtitles). Only the tool catalog (schemas, descriptions)
+# is safe to share. Run `npm run capture` locally to repopulate.
+/fixtures/swiggy/food/*.json
+!/fixtures/swiggy/food/_tools.json
+
 # vercel
 .vercel
 

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["bom1"],
+  "functions": {
+    "app/api/whatsapp/route.ts": { "maxDuration": 60 },
+    "app/api/agent/route.ts": { "maxDuration": 60 },
+    "app/api/connect/route.ts": { "maxDuration": 10 },
+    "app/api/cron/cleanup-checkpoints/route.ts": { "maxDuration": 60 }
+  },
+  "crons": [
+    { "path": "/api/cron/cleanup-checkpoints", "schedule": "0 3 * * *" }
+  ]
+}
