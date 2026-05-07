@@ -336,12 +336,23 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
     if (!cart) return new Command({ goto: END, update: { status: "failed" as RunStatus } });
 
     const text = await gatePrompt({ stage: "final", cart });
-    interrupt<InterruptPayload, string>({
+    const finalReply = interrupt<InterruptPayload, string>({
       kind: "final-gate",
       stage: "final",
       text,
       graceSeconds: graceSeconds(),
     });
+    // CRITICAL: respect the user's reply at the final gate. The earlier
+    // version ignored this return value and unconditionally proceeded
+    // to place the order, which caused a real ₹321 Paradise Biryani
+    // order to fire when "STOP" was sent. Never again.
+    if (classifyReply(finalReply) !== "yes") {
+      safeLog("agent.placer.final-gate-cancelled", {
+        userId: state.userId,
+        reply: finalReply.slice(0, 32),
+      });
+      return new Command({ goto: END, update: { status: "cancelled" as RunStatus } });
+    }
 
     const orderRef = state.userId;
     const seconds = graceSeconds();
@@ -418,11 +429,22 @@ export async function compileLastBite(swiggy: SwiggyClient) {
 }
 
 function extractOrderId(result: unknown): string {
+  if (typeof result === "string") {
+    // Swiggy's place_food_order often returns a plain text confirmation
+    // like "Order 237151187066628 placed successfully ..."
+    const m = result.match(/\bOrder\s+(\d{10,20})/i) ?? result.match(/\b(\d{12,20})\b/);
+    if (m) return m[1];
+  }
   if (result && typeof result === "object") {
     const r = result as Record<string, unknown>;
-    if (typeof r.order_id === "string") return r.order_id;
-    if (typeof r.orderId === "string") return r.orderId;
-    if (typeof r.id === "string") return r.id;
+    if (typeof r.order_id === "string" || typeof r.order_id === "number") return String(r.order_id);
+    if (typeof r.orderId === "string" || typeof r.orderId === "number") return String(r.orderId);
+    if (typeof r.id === "string" || typeof r.id === "number") return String(r.id);
+    // Some responses wrap the cart in `data` with an `order_id` inside.
+    const inner = (r.data ?? {}) as Record<string, unknown>;
+    if (typeof inner.order_id === "string" || typeof inner.order_id === "number") {
+      return String(inner.order_id);
+    }
   }
   return "unknown";
 }
