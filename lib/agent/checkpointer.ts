@@ -17,7 +17,16 @@ let pool: Pool | null = null;
  */
 export async function getCheckpointer(): Promise<BaseCheckpointSaver> {
   if (cached) return cached;
-  const url = process.env.LASTBITE_PG_URL;
+  // Prefer the explicit name; fall back to Neon's auto-injected envs.
+  // Use the *unpooled* / non-pooling URL: PgBouncer's transaction pooler
+  // breaks LangGraph's prepared statements and long-lived listen/notify
+  // semantics. Our own pg.Pool (max=2) handles connection reuse.
+  const url =
+    process.env.LASTBITE_PG_URL ??
+    process.env.DATABASE_URL_UNPOOLED ??
+    process.env.POSTGRES_URL_NON_POOLING ??
+    process.env.DATABASE_URL ??
+    process.env.POSTGRES_URL;
   if (!url) {
     cached = new MemorySaver();
     return cached;
