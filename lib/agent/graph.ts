@@ -2,7 +2,6 @@ import {
   Annotation,
   Command,
   END,
-  MessagesAnnotation,
   START,
   StateGraph,
   interrupt,
@@ -27,7 +26,6 @@ import { safeLog } from "@/lib/redact";
 export type RunStatus = "in-progress" | "cancelled" | "placed" | "duplicate" | "failed";
 
 export const LastBiteState = Annotation.Root({
-  ...MessagesAnnotation.spec,
   userId: Annotation<string>(),
   query: Annotation<string>(),
   addressId: Annotation<string | null>({ reducer: (_, n) => n, default: () => null }),

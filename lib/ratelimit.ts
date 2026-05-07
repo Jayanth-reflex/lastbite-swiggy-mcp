@@ -4,7 +4,7 @@ import { Redis } from "@upstash/redis";
 let _connectLimiter: Ratelimit | null = null;
 
 /**
- * Sliding window rate limiter for /api/connect.
+ * Sliding-window rate limiter for /api/oauth/start (5 per IP per hour).
  * Disabled in offline mode and when Upstash creds are unset (dev defaults
  * to "no limiter" — safer than failing closed during local dev).
  */

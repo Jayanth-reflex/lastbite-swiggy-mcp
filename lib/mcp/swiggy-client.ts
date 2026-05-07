@@ -133,7 +133,8 @@ export class SwiggyClient {
   /**
    * Lightweight token-validation probe: opens an MCP session with the
    * supplied token and checks that the server returns a tools list.
-   * Used by /api/connect to fail fast on bad tokens.
+   * Useful for ad-hoc token sanity checks (advanced flows that don't go
+   * through the OAuth callback).
    */
   static async validate(token: string, surface: SwiggySurface = "food"): Promise<boolean> {
     const probe = new SwiggyClient({ token, surface });
