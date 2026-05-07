@@ -9,6 +9,12 @@ import {
 } from "@langchain/langgraph";
 import { generateText, stepCountIs } from "ai";
 import { groq } from "@ai-sdk/groq";
+
+// AI Gateway model strings ('provider/model') route through Vercel's
+// gateway at runtime when an AI_GATEWAY_API_KEY (or VERCEL_OIDC_TOKEN
+// on deploy) is present. Direct provider names (just 'llama-3.3-70b…')
+// fall back to the @ai-sdk/groq package + GROQ_API_KEY env.
+const isGatewayModel = (id: string): boolean => id.includes("/");
 import type { SwiggyClient } from "@/lib/mcp/swiggy-client";
 import { Cart, classifyReply, type GatesPassed, type InterruptPayload } from "@/lib/agent/schemas";
 import { coerceToCart, tryParseCart } from "@/lib/agent/tools";
@@ -49,7 +55,8 @@ export const LastBiteState = Annotation.Root({
 export type LastBiteStateT = typeof LastBiteState.State;
 
 function agentModel() {
-  return groq(process.env.LASTBITE_AGENT_MODEL ?? "llama-3.3-70b-versatile");
+  const id = process.env.LASTBITE_AGENT_MODEL ?? "anthropic/claude-haiku-4-5";
+  return isGatewayModel(id) ? id : groq(id);
 }
 
 function graceSeconds(): number {
