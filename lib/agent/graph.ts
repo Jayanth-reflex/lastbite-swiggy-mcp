@@ -136,7 +136,22 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
       }
     }
 
-    const tools = await swiggy.tools();
+    const allTools = await swiggy.tools();
+    // Trim to the tools the searcher actually needs. Each Swiggy MCP tool
+    // description is paragraphs long; sending all 14 blows past the 8b
+    // model's 6K-tokens-per-minute free tier. Address resolution + order
+    // placement happen outside the LLM loop.
+    const SEARCHER_ALLOWED = new Set([
+      "search_restaurants",
+      "search_menu",
+      "get_restaurant_menu",
+      "update_food_cart",
+      "get_food_cart",
+    ]);
+    const tools = Object.fromEntries(
+      Object.entries(allTools).filter(([name]) => SEARCHER_ALLOWED.has(name)),
+    );
+
     const result = await generateText({
       model: agentModel(),
       tools,
