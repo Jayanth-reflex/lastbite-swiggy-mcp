@@ -32,8 +32,10 @@ async function handle(req: Request) {
 
   const swiggy = new SwiggyClient({ token });
   try {
-    const orders = await swiggy.callTool("get_food_orders", {});
-    return NextResponse.json({ ok: true, orders });
+    const addrs = (await swiggy.callTool("get_addresses", {})) as { addresses?: Array<{ id: string }> };
+    const addressId = addrs?.addresses?.[0]?.id;
+    const orders = await swiggy.callTool("get_food_orders", addressId ? { addressId } : {});
+    return NextResponse.json({ ok: true, addressId, orders });
   } catch (err) {
     if (err instanceof SwiggyMcpError) {
       return NextResponse.json({ error: err.message }, { status: 502 });
