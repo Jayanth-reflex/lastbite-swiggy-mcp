@@ -6,9 +6,15 @@ import {
   StateGraph,
   interrupt,
 } from "@langchain/langgraph";
-import { parseIntent } from "@/lib/agent/intent";
+import { parseIntent, type Intent } from "@/lib/agent/intent";
 import type { SwiggyClient } from "@/lib/mcp/swiggy-client";
-import { Cart, classifyReply, type GatesPassed, type InterruptPayload } from "@/lib/agent/schemas";
+import {
+  Cart,
+  classifyReply,
+  type GatesPassed,
+  type InterruptPayload,
+  type Recommendation,
+} from "@/lib/agent/schemas";
 import { tryParseCart } from "@/lib/agent/tools";
 import { estimateCalories, gatePrompt } from "@/lib/agent/persona";
 import {
@@ -41,6 +47,12 @@ export const LastBiteState = Annotation.Root({
   orderId: Annotation<string | null>({ reducer: (_, n) => n, default: () => null }),
   status: Annotation<RunStatus>({ reducer: (_, n) => n, default: () => "in-progress" }),
   failureReason: Annotation<string | null>({ reducer: (_, n) => n, default: () => null }),
+  // Set by the searcher when an exact match isn't found. The recommender
+  // node interrupts with this list so the user can pick.
+  recommendations: Annotation<Recommendation[] | null>({ reducer: (_, n) => n, default: () => null }),
+  // Cached parsed intent so the recommender knows which dish to look up
+  // at the picked restaurant without re-parsing the user's original query.
+  intent: Annotation<Intent | null>({ reducer: (_, n) => n, default: () => null }),
 });
 
 export type LastBiteStateT = typeof LastBiteState.State;
@@ -79,47 +91,110 @@ interface AddressLike {
   address_id?: unknown;
 }
 
-function pickBestRestaurant(raw: unknown, hint: string | null): SwiggyRestaurant | null {
-  if (!raw || typeof raw !== "object") return null;
+function parseRestaurants(raw: unknown): SwiggyRestaurant[] {
+  if (!raw || typeof raw !== "object") return [];
   const list = (raw as { restaurants?: unknown[] }).restaurants ?? [];
-  if (!Array.isArray(list)) return null;
-  const open = list
+  if (!Array.isArray(list)) return [];
+  return list
     .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
-    .map((r) => ({
+    .map<SwiggyRestaurant>((r) => ({
       id: String(r.id ?? ""),
       name: String(r.name ?? ""),
       availabilityStatus: typeof r.availabilityStatus === "string" ? r.availabilityStatus : undefined,
       distanceKm: typeof r.distanceKm === "number" ? r.distanceKm : undefined,
       avgRating: typeof r.avgRating === "number" ? r.avgRating : undefined,
+      costForTwo: typeof r.costForTwo === "string" ? r.costForTwo : undefined,
     }))
-    .filter((r) => r.id && r.name && (r.availabilityStatus ?? "OPEN") === "OPEN");
-  if (open.length === 0) return null;
-  if (hint) {
-    const lower = hint.toLowerCase();
-    const matched = open.find((r) => r.name.toLowerCase().includes(lower));
-    if (matched) return matched;
-  }
-  return open[0];
+    .filter((r) => r.id && r.name);
 }
 
-function pickBestMenuItem(raw: unknown, budget: number | null): SwiggyMenuItem | null {
+interface FilterReasons {
+  hint?: string;
+  rating?: string;
+  distance?: string;
+  closed?: string;
+}
+
+function whyDropped(r: SwiggyRestaurant, intent: Intent): FilterReasons {
+  const reasons: FilterReasons = {};
+  if ((r.availabilityStatus ?? "OPEN") !== "OPEN") reasons.closed = "currently closed";
+  if (intent.distanceMaxKm != null && r.distanceKm != null && r.distanceKm > intent.distanceMaxKm) {
+    reasons.distance = `${r.distanceKm}km away (>${intent.distanceMaxKm}km cap)`;
+  }
+  if (intent.ratingMin != null && r.avgRating != null && r.avgRating < intent.ratingMin) {
+    reasons.rating = `${r.avgRating}★ (asked ≥${intent.ratingMin}★)`;
+  }
+  if (intent.restaurantHint) {
+    if (!r.name.toLowerCase().includes(intent.restaurantHint.toLowerCase())) {
+      reasons.hint = `name doesn't match "${intent.restaurantHint}"`;
+    }
+  }
+  return reasons;
+}
+
+function applyHardFilters(rests: SwiggyRestaurant[], intent: Intent): SwiggyRestaurant[] {
+  return rests.filter((r) => {
+    if ((r.availabilityStatus ?? "OPEN") !== "OPEN") return false;
+    if (intent.distanceMaxKm != null && r.distanceKm != null && r.distanceKm > intent.distanceMaxKm)
+      return false;
+    if (intent.ratingMin != null && r.avgRating != null && r.avgRating < intent.ratingMin)
+      return false;
+    if (intent.restaurantHint && !r.name.toLowerCase().includes(intent.restaurantHint.toLowerCase()))
+      return false;
+    return true;
+  });
+}
+
+/** Sort restaurants best-first: highest rating, then closest. */
+function sortByQuality(rests: SwiggyRestaurant[]): SwiggyRestaurant[] {
+  return rests.slice().sort((a, b) => {
+    const ra = a.avgRating ?? 0;
+    const rb = b.avgRating ?? 0;
+    if (ra !== rb) return rb - ra;
+    const da = a.distanceKm ?? Infinity;
+    const db = b.distanceKm ?? Infinity;
+    return da - db;
+  });
+}
+
+function toRecommendation(r: SwiggyRestaurant, intent: Intent): Recommendation {
+  const reasons = whyDropped(r, intent);
+  const reasonText = [reasons.closed, reasons.distance, reasons.rating, reasons.hint]
+    .filter(Boolean)
+    .join("; ");
+  return {
+    restaurantId: r.id,
+    name: r.name,
+    rating: r.avgRating ?? null,
+    distanceKm: r.distanceKm ?? null,
+    costForTwo: r.costForTwo ?? null,
+    reason: reasonText || "near match",
+  };
+}
+
+function pickBestMenuItem(raw: unknown, intent: Intent): SwiggyMenuItem | null {
   if (!raw || typeof raw !== "object") return null;
   const list = (raw as { items?: unknown[] }).items ?? [];
   if (!Array.isArray(list)) return null;
-  const items = list
+  let items = list
     .filter((it): it is SwiggyMenuItem => !!it && typeof it === "object")
     .filter((it) => (it.in_stock ?? 1) !== 0 && (it.in_stock ?? 1) !== false)
-    .filter((it) => (it.menu_item_id ?? it.id) != null && it.name);
+    .filter((it) => (it.menu_item_id ?? it.id) != null && it.name)
+    // v1: skip items requiring variant/addon UX
+    .filter((it) => !it.hasVariants && !it.hasAddons);
+  if (intent.vegOnly) {
+    items = items.filter((it) => it.is_veg === "1" || it.is_veg === 1 || it.is_veg === true);
+  }
+  if (intent.budgetMaxRupees != null) {
+    items = items.filter((it) => Number(it.final_price ?? it.price ?? Infinity) <= intent.budgetMaxRupees!);
+  }
   if (items.length === 0) return null;
-  const priceOf = (it: SwiggyMenuItem) => Number(it.final_price ?? it.price ?? Infinity);
-  // Prefer items without variants/addons (simpler v1 path) — but accept any if none.
-  const simple = items.filter((it) => !it.hasVariants && !it.hasAddons);
-  const candidates = simple.length > 0 ? simple : items;
-  // Apply budget cap.
-  const inBudget = budget ? candidates.filter((it) => priceOf(it) <= budget) : candidates;
-  const pool = inBudget.length > 0 ? inBudget : candidates;
-  // Cheapest first within the pool.
-  return pool.slice().sort((a, b) => priceOf(a) - priceOf(b))[0] ?? null;
+  // Cheapest within the eligible set.
+  return items.slice().sort((a, b) => {
+    const pa = Number(a.final_price ?? a.price ?? Infinity);
+    const pb = Number(b.final_price ?? b.price ?? Infinity);
+    return pa - pb;
+  })[0] ?? null;
 }
 
 function extractFirstAddressId(raw: unknown): string | null {
@@ -147,6 +222,52 @@ interface SwiggyRestaurant {
   availabilityStatus?: string;
   distanceKm?: number;
   avgRating?: number;
+  costForTwo?: string;
+}
+
+interface SwiggyAddress {
+  id: string;
+  addressLine?: string;
+  addressTag?: string;
+  addressCategory?: string;
+}
+
+function parseAddresses(raw: unknown): SwiggyAddress[] {
+  if (!raw || typeof raw !== "object") return [];
+  const o = raw as Record<string, unknown>;
+  const list = (Array.isArray(o.addresses)
+    ? o.addresses
+    : (o.data && typeof o.data === "object" && Array.isArray((o.data as Record<string, unknown>).addresses))
+      ? ((o.data as Record<string, unknown>).addresses as unknown[])
+      : []) as unknown[];
+  return list
+    .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
+    .map<SwiggyAddress>((a) => ({
+      id: String(a.id ?? a.addressId ?? a.address_id ?? ""),
+      addressLine: typeof a.addressLine === "string" ? a.addressLine : undefined,
+      addressTag: typeof a.addressTag === "string" ? a.addressTag : undefined,
+      addressCategory: typeof a.addressCategory === "string" ? a.addressCategory : undefined,
+    }))
+    .filter((a) => a.id);
+}
+
+function pickAddress(addresses: SwiggyAddress[], tag: string | null): SwiggyAddress | null {
+  if (addresses.length === 0) return null;
+  if (!tag) return addresses[0];
+  const lower = tag.toLowerCase();
+  const exact = addresses.find(
+    (a) => a.addressTag?.toLowerCase() === lower || a.addressCategory?.toLowerCase() === lower,
+  );
+  if (exact) return exact;
+  // Loose: substring match on tag or addressLine.
+  return (
+    addresses.find(
+      (a) =>
+        a.addressTag?.toLowerCase().includes(lower) ||
+        a.addressCategory?.toLowerCase().includes(lower) ||
+        a.addressLine?.toLowerCase().includes(lower),
+    ) ?? addresses[0]
+  );
 }
 
 interface SwiggyMenuItem {
@@ -161,6 +282,95 @@ interface SwiggyMenuItem {
   in_stock?: number | boolean;
 }
 
+interface BuildCartResult {
+  cart: Cart | null;
+  failureReason?: string;
+}
+
+async function buildCartAt(
+  swiggy: SwiggyClient,
+  addressId: string,
+  restaurant: SwiggyRestaurant,
+  intent: Intent,
+): Promise<BuildCartResult> {
+  let menuRes;
+  try {
+    menuRes = await swiggy.callTool("search_menu", {
+      addressId,
+      query: intent.dish,
+      restaurantIdOfAddedItem: restaurant.id,
+    });
+  } catch (err) {
+    return { cart: null, failureReason: `Couldn't browse the menu at ${restaurant.name}.` };
+  }
+
+  const item = pickBestMenuItem(menuRes, intent);
+  if (!item) {
+    const budget = intent.budgetMaxRupees != null ? ` under ₹${intent.budgetMaxRupees}` : "";
+    return {
+      cart: null,
+      failureReason: `No "${intent.dish}"${intent.vegOnly ? " (veg)" : ""}${budget} on the ${restaurant.name} menu.`,
+    };
+  }
+
+  try {
+    await swiggy.callTool("update_food_cart", {
+      addressId,
+      restaurantId: restaurant.id,
+      cartItems: [
+        { menu_item_id: String(item.menu_item_id ?? item.id), quantity: intent.qty },
+      ],
+    });
+  } catch (err) {
+    return { cart: null, failureReason: `Couldn't add to cart: ${(err as Error).message.split("\n")[0]}` };
+  }
+
+  let cartRes;
+  try {
+    cartRes = await swiggy.callTool("get_food_cart", {
+      addressId,
+      restaurantName: restaurant.name,
+    });
+  } catch (err) {
+    return { cart: null, failureReason: `Couldn't read the cart: ${(err as Error).message.split("\n")[0]}` };
+  }
+  const cart = tryParseCart(cartRes, {
+    restaurantIdHint: restaurant.id,
+    restaurantNameHint: restaurant.name,
+  });
+  if (!cart) {
+    return { cart: null, failureReason: "Cart wasn't readable. Swiggy may not deliver to your selected address." };
+  }
+  if (cart.totalRupees >= MAX_ORDER_VALUE_RUPEES) {
+    return {
+      cart: null,
+      failureReason: `Cart is ₹${cart.totalRupees}. Swiggy MCP caps beta orders below ₹${MAX_ORDER_VALUE_RUPEES}.`,
+    };
+  }
+  return { cart };
+}
+
+function formatRecommendations(recs: Recommendation[]): string {
+  let text = "I couldn't find an exact match. Here are the closest options:\n\n";
+  recs.forEach((r, i) => {
+    let line = `${i + 1}. ${r.name}`;
+    if (r.rating != null) line += ` — ${r.rating}★`;
+    if (r.distanceKm != null) line += `, ${r.distanceKm}km away`;
+    if (r.costForTwo) line += `, ${r.costForTwo}`;
+    if (r.reason && r.reason !== "near match") line += `\n   why not exact: ${r.reason}`;
+    text += `${line}\n`;
+  });
+  text += "\nReply with **1**, **2**, or **3** to pick — or describe a different order.";
+  return text;
+}
+
+function parseRecommendationPick(reply: string): number | null {
+  const m = reply.trim().match(/^#?\s*(\d+)\s*$/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  return Number.isFinite(n) && n >= 1 && n <= 9 ? n - 1 : null;
+}
+
 export function makeLastBiteGraph(swiggy: SwiggyClient) {
   const searcher = async (state: LastBiteStateT) => {
     safeLog("agent.searcher.start", { userId: state.userId, queryLen: state.query.length });
@@ -169,164 +379,175 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
       return { cart: SMOKE_CART, addressId: state.addressId ?? "smoke-addr-001" };
     }
 
-    // Resolve a delivery address once per run before invoking the LLM.
-    let addressId = state.addressId;
-    if (!addressId) {
-      try {
-        const addrs = await swiggy.callTool("get_addresses", {});
-        addressId = extractFirstAddressId(addrs);
-      } catch (err) {
-        safeLog("agent.searcher.addresses-error", { message: (err as Error).message });
-      }
-      if (!addressId) {
-        return {
-          status: "failed" as RunStatus,
-          failureReason: "No saved Swiggy address found. Add one in the Swiggy app and try again.",
-        };
-      }
-    }
-
-    // Deterministic search: cheap regex / 8B intent parse, then a fixed
-    // sequence of Swiggy MCP calls. Avoids the agentic-LLM tool-loop
-    // which blows past free-tier token caps and is unreliable on small
-    // open-source models.
-    let intent;
+    // 0) Parse the user's intent via Groq 8B (no regex).
+    let intent: Intent;
     try {
       intent = await parseIntent(state.query);
     } catch (err) {
       safeLog("agent.searcher.intent-failed", { message: (err as Error).message });
       return {
         status: "failed" as RunStatus,
-        failureReason: "Couldn't parse your order. Try: \"biryani from Paradise, ₹500\".",
+        failureReason:
+          "Couldn't understand that order. Try: 'chocolate ice cream within 5km of MyHome under ₹300'.",
       };
     }
     safeLog("agent.searcher.intent", intent);
 
-    // 1) Search restaurants. Prefer the user's restaurant hint when
-    //    given; otherwise search by dish. If we get "Address not found"
-    //    we re-fetch addresses once and retry — covers the case where a
-    //    cached addressId became stale (e.g. after token refresh).
-    const restaurantQuery = intent.restaurantHint ?? intent.dish;
+    // 1) Resolve the right delivery address. Honour intent.addressTag.
+    let addresses: SwiggyAddress[] = [];
+    try {
+      addresses = parseAddresses(await swiggy.callTool("get_addresses", {}));
+    } catch (err) {
+      safeLog("agent.searcher.addresses-error", { message: (err as Error).message });
+    }
+    if (addresses.length === 0) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: "No saved Swiggy address found. Add one in the Swiggy app and try again.",
+      };
+    }
+    const address = pickAddress(addresses, intent.addressTag);
+    let addressId = address?.id ?? null;
+    if (intent.addressTag && address && address.addressTag?.toLowerCase() !== intent.addressTag.toLowerCase()) {
+      safeLog("agent.searcher.address-tag-fuzzy", { asked: intent.addressTag, picked: address.addressTag });
+    }
+    if (!addressId) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: "Couldn't pick a delivery address.",
+      };
+    }
+
+    // 2) Restaurant search. Use restaurantHint if given else cuisine else dish.
+    const queryText = intent.restaurantHint ?? intent.cuisine ?? intent.dish;
     let searchRes;
     try {
-      searchRes = await swiggy.callTool("search_restaurants", {
-        addressId,
-        query: restaurantQuery,
-      });
+      searchRes = await swiggy.callTool("search_restaurants", { addressId, query: queryText });
     } catch (err) {
       const msg = (err as Error).message;
       if (/Address.*not found|address.*invalid/i.test(msg)) {
-        safeLog("agent.searcher.address-stale", { staleId: addressId });
+        // Stale-address self-heal (token-refresh case).
         try {
-          const addrs2 = await swiggy.callTool("get_addresses", {});
-          const fresh = extractFirstAddressId(addrs2);
-          if (fresh && fresh !== addressId) {
-            addressId = fresh;
-            searchRes = await swiggy.callTool("search_restaurants", {
-              addressId,
-              query: restaurantQuery,
-            });
+          const fresh = parseAddresses(await swiggy.callTool("get_addresses", {}));
+          const newAddr = pickAddress(fresh, intent.addressTag);
+          if (newAddr && newAddr.id !== addressId) {
+            addressId = newAddr.id;
+            searchRes = await swiggy.callTool("search_restaurants", { addressId, query: queryText });
           } else {
             throw err;
           }
         } catch (retryErr) {
           return {
             status: "failed" as RunStatus,
-            failureReason: `Swiggy couldn't run that search: ${(retryErr as Error).message.split("\n")[0]}`,
+            failureReason: `Swiggy search failed: ${(retryErr as Error).message.split("\n")[0]}`,
           };
         }
       } else {
         return {
           status: "failed" as RunStatus,
-          failureReason: `Swiggy couldn't run that search: ${msg.split("\n")[0]}`,
+          failureReason: `Swiggy search failed: ${msg.split("\n")[0]}`,
         };
       }
     }
-    const restaurant = pickBestRestaurant(searchRes, intent.restaurantHint);
-    if (!restaurant) {
+
+    const allRestaurants = parseRestaurants(searchRes);
+    if (allRestaurants.length === 0) {
       return {
         status: "failed" as RunStatus,
-        failureReason: `No open ${intent.restaurantHint ?? intent.dish} place found near you.`,
+        failureReason: `No restaurants found for "${queryText}" near you.`,
       };
     }
-    safeLog("agent.searcher.restaurant", { id: restaurant.id, name: restaurant.name });
 
-    // 2) Search the menu within that restaurant for the dish.
-    let menuRes;
-    try {
-      menuRes = await swiggy.callTool("search_menu", {
+    // 3) Apply hard filters from the intent. Sort survivors best-first.
+    const matched = sortByQuality(applyHardFilters(allRestaurants, intent));
+
+    if (matched.length === 0) {
+      // Nothing met every constraint. Recommend the closest near-misses
+      // (top 3 by quality) instead of placing an order.
+      const close = sortByQuality(allRestaurants.filter((r) => (r.availabilityStatus ?? "OPEN") === "OPEN")).slice(0, 3);
+      if (close.length === 0) {
+        return {
+          status: "failed" as RunStatus,
+          failureReason: `No open restaurants for "${queryText}" right now.`,
+        };
+      }
+      safeLog("agent.searcher.no-exact", { count: close.length });
+      return {
+        recommendations: close.map((r) => toRecommendation(r, intent)),
+        intent,
         addressId,
-        query: intent.dish,
-        restaurantIdOfAddedItem: restaurant.id,
-      });
-    } catch (err) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: `Couldn't browse the menu: ${(err as Error).message.split("\n")[0]}`,
-      };
-    }
-    const item = pickBestMenuItem(menuRes, intent.budgetRupees);
-    if (!item) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: intent.budgetRupees
-          ? `No "${intent.dish}" under ₹${intent.budgetRupees} at ${restaurant.name}.`
-          : `No "${intent.dish}" on the ${restaurant.name} menu.`,
-      };
-    }
-    safeLog("agent.searcher.item", { id: item.menu_item_id, name: item.name, price: item.price ?? item.final_price });
-
-    // 3) Add to cart. Skip items requiring variant/addon selection in v1.
-    if (item.hasVariants || item.hasAddons) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: `"${item.name}" needs customisation (size / addons) which Last Bite v1 doesn't support yet. Try a simpler item.`,
       };
     }
 
-    try {
-      await swiggy.callTool("update_food_cart", {
-        addressId,
-        restaurantId: restaurant.id,
-        cartItems: [{ menu_item_id: String(item.menu_item_id ?? item.id), quantity: intent.qty }],
-      });
-    } catch (err) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: `Couldn't add to cart: ${(err as Error).message.split("\n")[0]}`,
-      };
+    // 4) Try the top candidates' menus in order. First clean cart wins.
+    safeLog("agent.searcher.candidates", { count: matched.length, top: matched[0].name });
+    let firstFailure: string | undefined;
+    for (const r of matched.slice(0, 3)) {
+      const result = await buildCartAt(swiggy, addressId, r, intent);
+      if (result.cart) {
+        return { cart: result.cart, addressId, intent };
+      }
+      firstFailure ??= result.failureReason;
     }
 
-    // 4) Fetch the populated cart.
-    let cartRes;
-    try {
-      cartRes = await swiggy.callTool("get_food_cart", {
-        addressId,
-        restaurantName: restaurant.name,
+    // 5) None of the matches yielded a buildable cart. Recommend.
+    return {
+      recommendations: matched.slice(0, 3).map((r) => toRecommendation(r, intent)),
+      intent,
+      addressId,
+      failureReason: firstFailure,
+    };
+  };
+
+  const recommender = async (state: LastBiteStateT) => {
+    if (!state.recommendations || state.recommendations.length === 0 || !state.intent || !state.addressId) {
+      return new Command({
+        goto: END,
+        update: { status: "failed" as RunStatus, failureReason: "No recommendations to show." },
       });
-    } catch (err) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: `Couldn't read the cart: ${(err as Error).message.split("\n")[0]}`,
-      };
     }
-    const cart = tryParseCart(cartRes, {
-      restaurantIdHint: restaurant.id,
-      restaurantNameHint: restaurant.name,
-    });
-    if (!cart) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: "Cart wasn't readable. Swiggy may not deliver to your selected address.",
-      };
+
+    const text = formatRecommendations(state.recommendations);
+    const reply = interrupt<InterruptPayload, string>({ kind: "recommendation", text });
+    const cls = classifyReply(reply);
+    if (cls === "stop") {
+      return new Command({ goto: END, update: { status: "cancelled" as RunStatus } });
     }
-    if (cart.totalRupees >= MAX_ORDER_VALUE_RUPEES) {
-      return {
-        status: "failed" as RunStatus,
-        failureReason: `Cart is ₹${cart.totalRupees}. Swiggy MCP caps beta orders below ₹${MAX_ORDER_VALUE_RUPEES}.`,
-      };
+    const idx = parseRecommendationPick(reply);
+    if (idx === null || idx >= state.recommendations.length) {
+      // User likely typed a fresh query. Drop recommendations and let the
+      // chat surface a "describe again" prompt; don't auto-search.
+      return new Command({
+        goto: END,
+        update: {
+          status: "failed" as RunStatus,
+          failureReason: "I didn't understand which option to pick. Send a fresh order to start over.",
+          recommendations: null,
+        },
+      });
     }
-    return { cart, addressId };
+
+    const picked = state.recommendations[idx];
+    const restaurant: SwiggyRestaurant = {
+      id: picked.restaurantId,
+      name: picked.name,
+      availabilityStatus: "OPEN",
+      avgRating: picked.rating ?? undefined,
+      distanceKm: picked.distanceKm ?? undefined,
+      costForTwo: picked.costForTwo ?? undefined,
+    };
+    const result = await buildCartAt(swiggy, state.addressId, restaurant, state.intent);
+    if (!result.cart) {
+      return new Command({
+        goto: END,
+        update: {
+          status: "failed" as RunStatus,
+          failureReason: result.failureReason ?? `Couldn't build a cart at ${picked.name}.`,
+          recommendations: null,
+        },
+      });
+    }
+    return { cart: result.cart, recommendations: null };
   };
 
   const confirmer = async (state: LastBiteStateT) => {
@@ -445,19 +666,26 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
     }
   };
 
-  const route = (state: LastBiteStateT): "confirmer" | "placer" | typeof END => {
+  const route = (
+    state: LastBiteStateT,
+  ): "recommender" | "confirmer" | "placer" | typeof END => {
     if (state.status !== "in-progress") return END;
-    if (!state.cart) return END;
-    if (state.gatesPassed.calorie && state.gatesPassed.eta) return "placer";
-    return "confirmer";
+    if (state.cart) {
+      if (state.gatesPassed.calorie && state.gatesPassed.eta) return "placer";
+      return "confirmer";
+    }
+    if (state.recommendations && state.recommendations.length > 0) return "recommender";
+    return END;
   };
 
   return new StateGraph(LastBiteState)
     .addNode("searcher", searcher)
+    .addNode("recommender", recommender)
     .addNode("confirmer", confirmer)
     .addNode("placer", placer)
     .addEdge(START, "searcher")
-    .addConditionalEdges("searcher", route, ["confirmer", "placer", END])
+    .addConditionalEdges("searcher", route, ["recommender", "confirmer", "placer", END])
+    .addConditionalEdges("recommender", route, ["recommender", "confirmer", "placer", END])
     .addConditionalEdges("confirmer", route, ["confirmer", "placer", END])
     .addEdge("placer", END);
 }

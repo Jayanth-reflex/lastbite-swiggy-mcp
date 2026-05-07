@@ -5,78 +5,76 @@ import { z } from "zod";
 export const Intent = z.object({
   dish: z
     .string()
-    .describe("The dish or cuisine the user wants. Examples: 'biryani', 'pizza', 'paneer tikka'"),
+    .describe("The specific dish or food item the user wants. Examples: 'chocolate ice cream', 'chicken biryani', 'paneer butter masala'."),
+  cuisine: z
+    .string()
+    .nullable()
+    .describe("Cuisine category if mentioned (e.g. 'Indian', 'Italian', 'Chinese'). null if not specified."),
   restaurantHint: z
     .string()
     .nullable()
-    .describe("Restaurant name they mentioned, or null if they didn't"),
-  budgetRupees: z
+    .describe("Restaurant name if the user named one (e.g. 'Paradise', 'Pista House'). null if not specified."),
+  addressTag: z
+    .string()
+    .nullable()
+    .describe("Saved-address label if the user said 'at <name>' or 'near <name>' or 'MyHome'/'Work'/'Gym' etc. Examples: 'MyHome', 'Work', 'Gym'. null if not specified."),
+  budgetMaxRupees: z
     .number()
     .int()
     .nullable()
-    .describe("Maximum amount they're willing to spend in INR, or null if unspecified"),
-  qty: z.number().int().min(1).max(10).default(1).describe("How many of the item they want"),
+    .describe("Maximum budget in INR. Catch ₹500, Rs 300, '300 rupees', '₹300 budget', 'under 400'. null if not specified."),
+  ratingMin: z
+    .number()
+    .min(0)
+    .max(5)
+    .nullable()
+    .describe("Minimum restaurant rating out of 5. Phrases like 'best rated', 'top rated', 'good rating' imply 4.0. 'highly rated' implies 4.2. null if no rating constraint."),
+  distanceMaxKm: z
+    .number()
+    .nullable()
+    .describe("Maximum delivery distance in km. Catch 'within 5km', '7 km radius', 'nearby' (=3km). null if no distance constraint."),
+  qty: z
+    .number()
+    .int()
+    .min(1)
+    .max(10)
+    .default(1)
+    .describe("How many of the item, default 1. Catch '2 plates', 'two pieces', '3x'."),
+  vegOnly: z
+    .boolean()
+    .nullable()
+    .describe("True if the user explicitly wants veg only. False if they explicitly say non-veg. null if not specified."),
 });
 export type Intent = z.infer<typeof Intent>;
 
 const INTENT_MODEL = process.env.LASTBITE_INTENT_MODEL ?? "llama-3.1-8b-instant";
 
-const SYSTEM = `Extract structured order intent from a single short user message in English/Hinglish.
-Currency in INR. If the user mentions a restaurant by name, capture it in restaurantHint;
-otherwise leave it null. Only extract from what the user actually said — do not invent values.`;
+const SYSTEM = `Extract structured order intent from the user's message.
 
-/**
- * Two-step parsing: cheap regex first, LLM only if it fails. The LLM call
- * uses Groq 8B (500K TPD free tier) and a tight structured-output schema,
- * keeping per-call cost ~200 tokens.
- */
+The user is ordering food on Swiggy. Their message may be in English or
+Hinglish. Extract every constraint they specify exactly — do NOT invent
+values. Currency is INR (₹).
+
+If the user implies a constraint without giving a number, use these
+defaults: 'best rated' or 'top rated' → ratingMin 4.0; 'highly rated' →
+4.2; 'nearby' (no distance given) → distanceMaxKm 3.
+
+For addressTag: only fill it when the user says 'at <name>' / 'near
+<name>' / 'from <name> address' / 'MyHome' / 'Work' / 'Gym' etc.
+Restaurant names go in restaurantHint, not addressTag.
+
+If the user names a restaurant explicitly (e.g. 'from Paradise'), put it
+in restaurantHint and leave cuisine null unless the user also said the
+cuisine independently.`;
+
 export async function parseIntent(text: string): Promise<Intent> {
-  const cheap = regexIntent(text);
-  if (cheap) return cheap;
-
   const result = await generateObject({
     model: groq(INTENT_MODEL),
     schema: Intent,
     system: SYSTEM,
     prompt: text,
     abortSignal: AbortSignal.timeout(15_000),
+    maxRetries: 0,
   });
   return result.object;
-}
-
-const RUPEES_RE = /(?:₹|rs\.?|inr|rupees?)\s*(\d{2,5})|(\d{2,5})\s*(?:₹|rs\.?|inr|rupees?|rupees? budget|budget)/i;
-const QTY_RE = /\b(\d+)\s*(?:plates?|pieces?|orders?|x|×)\b/i;
-
-function regexIntent(text: string): Intent | null {
-  const lower = text.toLowerCase().trim();
-  if (lower.length < 3 || lower.length > 200) return null;
-
-  // Budget
-  const budgetMatch = lower.match(RUPEES_RE);
-  const budget = budgetMatch ? Number(budgetMatch[1] ?? budgetMatch[2]) : null;
-
-  // Restaurant hint: "from <Name>" or "<Name> ka biryani" patterns. Keep loose.
-  const restaurantMatch =
-    text.match(/from\s+([A-Z][A-Za-z'&\s]{1,30}?)(?:\s*[,;]|\s+for|\s+₹|\s+rs|$)/) ??
-    text.match(/at\s+([A-Z][A-Za-z'&\s]{1,30}?)(?:\s*[,;]|\s+for|\s+₹|\s+rs|$)/);
-  const restaurantHint = restaurantMatch ? restaurantMatch[1].trim() : null;
-
-  // Quantity
-  const qtyMatch = text.match(QTY_RE);
-  const qty = qtyMatch ? Math.min(10, Math.max(1, Number(qtyMatch[1]))) : 1;
-
-  // Dish: take the first 1-3 nouny words. Heuristic — fall back to LLM if no obvious dish.
-  const stripped = text
-    .replace(RUPEES_RE, "")
-    .replace(/from\s+[A-Z][A-Za-z'&\s]{1,30}/gi, "")
-    .replace(/at\s+[A-Z][A-Za-z'&\s]{1,30}/gi, "")
-    .replace(QTY_RE, "")
-    .replace(/[,.;!?]/g, " ")
-    .replace(/\b(order|please|pls|can\s*you|i\s*want|get\s*me|me|a|an|the|some|for|budget)\b/gi, "")
-    .trim();
-  const dishWords = stripped.split(/\s+/).filter((w) => w.length > 2).slice(0, 3);
-  if (dishWords.length === 0) return null;
-  const dish = dishWords.join(" ");
-
-  return { dish, restaurantHint, budgetRupees: budget, qty };
 }

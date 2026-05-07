@@ -21,12 +21,23 @@ interface Me {
   realOrdersAvailable?: boolean;
 }
 
-const SUGGESTIONS = [
-  "biryani from Paradise, ₹500",
-  "paneer butter masala under ₹400",
-  "pizza margherita",
-  "chinese for one, ₹300",
+const SUGGESTIONS_DEMO = [
+  "chocolate ice cream within 7km of MyHome, best rated, under ₹300",
+  "biryani at Paradise, ₹500",
+  "veg pizza near Work, top rated within 5km",
+  "paneer butter masala, 2 plates, under ₹600",
 ];
+
+const SUGGESTIONS_LIVE = [
+  "chocolate ice cream within 7km of MyHome, best rated, under ₹300",
+  "biryani at Paradise, ₹500",
+  "veg pizza near Work, top rated within 5km",
+];
+
+const EXAMPLE_HINT =
+  "Try: \"chocolate ice cream within 7km of my MyHome address, best rated, under ₹300\". " +
+  "I understand budgets, distance limits, ratings, named addresses (MyHome / Work / Gym), " +
+  "veg-only filters, and quantities.";
 
 export default function NewOrderPage() {
   const router = useRouter();
@@ -52,8 +63,8 @@ export default function NewOrderPage() {
           role: "bot",
           ts: Date.now(),
           text: isDemo
-            ? "Hi! Tell me what you'd like to order — e.g. \"biryani from Paradise, ₹500\". I'll walk you through three confirmation gates. We're in demo mode, so no real Swiggy order will be placed."
-            : "Hi! Tell me what you'd like to order — e.g. \"biryani from Paradise, ₹500\". I'll walk you through three confirmation gates and a 30-second grace timer.",
+            ? `Hi! ${EXAMPLE_HINT} I'll walk you through three confirmation gates. We're in demo mode, so no real Swiggy order will be placed — perfect for trying things out.`
+            : `Hi! ${EXAMPLE_HINT} I'll walk you through three confirmation gates and a 30-second grace timer before any real order goes through.`,
         },
       ]);
     })();
@@ -223,17 +234,27 @@ export default function NewOrderPage() {
         </div>
 
         {messages.length <= 1 && (
-          <div className="mt-6 flex flex-wrap gap-2">
-            {SUGGESTIONS.map((s) => (
-              <button
-                key={s}
-                onClick={() => void send(s)}
-                disabled={pending}
-                className="rounded-full border border-border/60 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground disabled:opacity-50"
-              >
-                {s}
-              </button>
-            ))}
+          <div className="mt-6 flex flex-col gap-3">
+            <div className="text-xs uppercase tracking-wide text-muted-foreground">
+              Tap an example to try it
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {(isDemo ? SUGGESTIONS_DEMO : SUGGESTIONS_LIVE).map((s) => (
+                <button
+                  key={s}
+                  onClick={() => void send(s)}
+                  disabled={pending}
+                  className="max-w-full rounded-full border border-border/60 px-3 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:border-foreground/40 hover:text-foreground disabled:opacity-50"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              You can mention <strong>budgets</strong> (₹300, under ₹500), <strong>distance</strong> (within 5km),{" "}
+              <strong>rating</strong> (best rated, top rated), <strong>saved address names</strong>{" "}
+              (MyHome, Work, Gym), <strong>veg / non-veg</strong>, and <strong>quantities</strong> (2 plates).
+            </div>
           </div>
         )}
       </section>

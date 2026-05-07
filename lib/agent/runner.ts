@@ -73,7 +73,9 @@ async function runTurn({ userId, text, swiggy }: RunnerInput): Promise<RunnerRep
 
   // If we're paused at a gate and the user replied unclearly (not yes/stop),
   // re-prompt without advancing the graph. Saves them from accidental
-  // cancellations and keeps the gate state intact.
+  // cancellations and keeps the gate state intact. Recommendation
+  // interrupts allow free-form ("describe a different order") so we don't
+  // re-prompt them — the recommender node handles unclear replies itself.
   if (
     hasPendingInterrupt &&
     beforePending !== null &&
@@ -96,15 +98,17 @@ async function runTurn({ userId, text, swiggy }: RunnerInput): Promise<RunnerRep
     const init: Partial<LastBiteStateT> = {
       userId,
       query: text,
-      // Reset addressId on each fresh run so the searcher re-fetches.
-      // Stale IDs surface when Swiggy invalidates them post-token-refresh
-      // ("Address with ID xxx not found").
+      // Reset all derived state on each fresh run so the searcher
+      // re-resolves from scratch. Stale fields surface when Swiggy
+      // invalidates IDs post-token-refresh.
       addressId: null,
       gatesPassed: {},
       cart: null,
       orderId: null,
       status: "in-progress",
       failureReason: null,
+      recommendations: null,
+      intent: null,
     };
     await graph.invoke(init as LastBiteStateT, config);
   }

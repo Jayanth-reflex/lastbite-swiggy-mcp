@@ -44,8 +44,22 @@ export const InterruptPayload = z.discriminatedUnion("kind", [
     text: z.string(),
     graceSeconds: z.number().int().positive(),
   }),
+  z.object({
+    kind: z.literal("recommendation"),
+    text: z.string(),
+  }),
 ]);
 export type InterruptPayload = z.infer<typeof InterruptPayload>;
+
+export const Recommendation = z.object({
+  restaurantId: z.string(),
+  name: z.string(),
+  rating: z.number().nullable(),
+  distanceKm: z.number().nullable(),
+  costForTwo: z.string().nullable(),
+  reason: z.string().describe("Why this is a near-miss vs the user's exact intent (e.g. '8km away (>5km cap)', '4.0★ vs 4.5★ asked')."),
+});
+export type Recommendation = z.infer<typeof Recommendation>;
 
 const STOP_TOKENS = ["stop", "no", "n", "cancel", "abort", "nahi", "nahin", "ruko", "band karo"];
 const YES_TOKENS = ["yes", "y", "ok", "okay", "go", "haan", "haan ji", "ji", "confirm", "✅"];
