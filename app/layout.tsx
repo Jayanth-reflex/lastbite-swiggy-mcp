@@ -17,7 +17,11 @@ export const metadata: Metadata = {
   title: "Last Bite — Order Swiggy on WhatsApp",
   description:
     "WhatsApp-native Swiggy ordering with a three-stage confirmation and a 30-second grace timer. Powered by Swiggy.",
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://swiggy-mcp.vercel.app"),
+  metadataBase: new URL(
+    (process.env.NEXT_PUBLIC_SITE_URL && process.env.NEXT_PUBLIC_SITE_URL.length > 0
+      ? process.env.NEXT_PUBLIC_SITE_URL
+      : "https://swiggy-mcp.vercel.app"),
+  ),
   openGraph: {
     title: "Last Bite — Order Swiggy on WhatsApp",
     description: "Three confirmation gates and a 30-second grace timer before any COD order goes through.",

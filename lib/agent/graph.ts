@@ -7,17 +7,10 @@ import {
   StateGraph,
   interrupt,
 } from "@langchain/langgraph";
-import { generateText, stepCountIs } from "ai";
-import { groq } from "@ai-sdk/groq";
-
-// AI Gateway model strings ('provider/model') route through Vercel's
-// gateway at runtime when an AI_GATEWAY_API_KEY (or VERCEL_OIDC_TOKEN
-// on deploy) is present. Direct provider names (just 'llama-3.3-70b…')
-// fall back to the @ai-sdk/groq package + GROQ_API_KEY env.
-const isGatewayModel = (id: string): boolean => id.includes("/");
+import { parseIntent } from "@/lib/agent/intent";
 import type { SwiggyClient } from "@/lib/mcp/swiggy-client";
 import { Cart, classifyReply, type GatesPassed, type InterruptPayload } from "@/lib/agent/schemas";
-import { coerceToCart, tryParseCart } from "@/lib/agent/tools";
+import { tryParseCart } from "@/lib/agent/tools";
 import { estimateCalories, gatePrompt } from "@/lib/agent/persona";
 import {
   awaitGrace,
@@ -54,11 +47,6 @@ export const LastBiteState = Annotation.Root({
 
 export type LastBiteStateT = typeof LastBiteState.State;
 
-function agentModel() {
-  const id = process.env.LASTBITE_AGENT_MODEL ?? "anthropic/claude-haiku-4-5";
-  return isGatewayModel(id) ? id : groq(id);
-}
-
 function graceSeconds(): number {
   const raw = Number(process.env.LASTBITE_GRACE_SECONDS);
   return Number.isFinite(raw) && raw > 0 ? raw : 30;
@@ -93,6 +81,49 @@ interface AddressLike {
   address_id?: unknown;
 }
 
+function pickBestRestaurant(raw: unknown, hint: string | null): SwiggyRestaurant | null {
+  if (!raw || typeof raw !== "object") return null;
+  const list = (raw as { restaurants?: unknown[] }).restaurants ?? [];
+  if (!Array.isArray(list)) return null;
+  const open = list
+    .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
+    .map((r) => ({
+      id: String(r.id ?? ""),
+      name: String(r.name ?? ""),
+      availabilityStatus: typeof r.availabilityStatus === "string" ? r.availabilityStatus : undefined,
+      distanceKm: typeof r.distanceKm === "number" ? r.distanceKm : undefined,
+      avgRating: typeof r.avgRating === "number" ? r.avgRating : undefined,
+    }))
+    .filter((r) => r.id && r.name && (r.availabilityStatus ?? "OPEN") === "OPEN");
+  if (open.length === 0) return null;
+  if (hint) {
+    const lower = hint.toLowerCase();
+    const matched = open.find((r) => r.name.toLowerCase().includes(lower));
+    if (matched) return matched;
+  }
+  return open[0];
+}
+
+function pickBestMenuItem(raw: unknown, budget: number | null): SwiggyMenuItem | null {
+  if (!raw || typeof raw !== "object") return null;
+  const list = (raw as { items?: unknown[] }).items ?? [];
+  if (!Array.isArray(list)) return null;
+  const items = list
+    .filter((it): it is SwiggyMenuItem => !!it && typeof it === "object")
+    .filter((it) => (it.in_stock ?? 1) !== 0 && (it.in_stock ?? 1) !== false)
+    .filter((it) => (it.menu_item_id ?? it.id) != null && it.name);
+  if (items.length === 0) return null;
+  const priceOf = (it: SwiggyMenuItem) => Number(it.final_price ?? it.price ?? Infinity);
+  // Prefer items without variants/addons (simpler v1 path) — but accept any if none.
+  const simple = items.filter((it) => !it.hasVariants && !it.hasAddons);
+  const candidates = simple.length > 0 ? simple : items;
+  // Apply budget cap.
+  const inBudget = budget ? candidates.filter((it) => priceOf(it) <= budget) : candidates;
+  const pool = inBudget.length > 0 ? inBudget : candidates;
+  // Cheapest first within the pool.
+  return pool.slice().sort((a, b) => priceOf(a) - priceOf(b))[0] ?? null;
+}
+
 function extractFirstAddressId(raw: unknown): string | null {
   if (!raw || typeof raw !== "object") return null;
   const o = raw as Record<string, unknown>;
@@ -111,12 +142,26 @@ function extractFirstAddressId(raw: unknown): string | null {
   return null;
 }
 
-const SEARCHER_SYSTEM = `You are Last Bite, a Swiggy ordering agent. Use the Swiggy Food MCP tools to:
-1. search_restaurants for a place matching the user's request.
-2. Inspect the menu (search_menu / get_restaurant_menu) to pick items.
-3. update_food_cart with one or more items, respecting any budget hint.
-4. Call get_food_cart and stop.
-NEVER call place_food_order — that is handled later. Powered by Swiggy.`;
+// Restaurant from search_restaurants results.
+interface SwiggyRestaurant {
+  id: string;
+  name: string;
+  availabilityStatus?: string;
+  distanceKm?: number;
+  avgRating?: number;
+}
+
+interface SwiggyMenuItem {
+  menu_item_id?: string | number;
+  id?: string | number;
+  name?: string;
+  price?: number;
+  final_price?: number;
+  is_veg?: string | number | boolean;
+  hasAddons?: boolean;
+  hasVariants?: boolean;
+  in_stock?: number | boolean;
+}
 
 export function makeLastBiteGraph(swiggy: SwiggyClient) {
   const searcher = async (state: LastBiteStateT) => {
@@ -143,46 +188,119 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
       }
     }
 
-    const allTools = await swiggy.tools();
-    // Trim to the tools the searcher actually needs. Each Swiggy MCP tool
-    // description is paragraphs long; sending all 14 blows past the 8b
-    // model's 6K-tokens-per-minute free tier. Address resolution + order
-    // placement happen outside the LLM loop.
-    const SEARCHER_ALLOWED = new Set([
-      "search_restaurants",
-      "search_menu",
-      "get_restaurant_menu",
-      "update_food_cart",
-      "get_food_cart",
-    ]);
-    const tools = Object.fromEntries(
-      Object.entries(allTools).filter(([name]) => SEARCHER_ALLOWED.has(name)),
-    );
+    // Deterministic search: cheap regex / 8B intent parse, then a fixed
+    // sequence of Swiggy MCP calls. Avoids the agentic-LLM tool-loop
+    // which blows past free-tier token caps and is unreliable on small
+    // open-source models.
+    let intent;
+    try {
+      intent = await parseIntent(state.query);
+    } catch (err) {
+      safeLog("agent.searcher.intent-failed", { message: (err as Error).message });
+      return {
+        status: "failed" as RunStatus,
+        failureReason: "Couldn't parse your order. Try: \"biryani from Paradise, ₹500\".",
+      };
+    }
+    safeLog("agent.searcher.intent", intent);
 
-    const result = await generateText({
-      model: agentModel(),
-      tools,
-      stopWhen: stepCountIs(8),
-      // Don't auto-retry: each retry burns the full conversation worth of
-      // tokens against the LLM provider's daily quota. One clean failure
-      // is better than three.
-      maxRetries: 0,
-      // 50s leaves headroom under the 60s Vercel function maxDuration.
-      abortSignal: AbortSignal.timeout(50_000),
-      system: `${SEARCHER_SYSTEM}\n\nUse addressId="${addressId}" for every tool that requires one. Do NOT call get_addresses.`,
-      prompt: state.query,
+    // 1) Search restaurants. Prefer the user's restaurant hint when
+    //    given; otherwise search by dish.
+    const restaurantQuery = intent.restaurantHint ?? intent.dish;
+    let searchRes;
+    try {
+      searchRes = await swiggy.callTool("search_restaurants", {
+        addressId,
+        query: restaurantQuery,
+      });
+    } catch (err) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: `Swiggy couldn't run that search: ${(err as Error).message.split("\n")[0]}`,
+      };
+    }
+    const restaurant = pickBestRestaurant(searchRes, intent.restaurantHint);
+    if (!restaurant) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: `No open ${intent.restaurantHint ?? intent.dish} place found near you.`,
+      };
+    }
+    safeLog("agent.searcher.restaurant", { id: restaurant.id, name: restaurant.name });
+
+    // 2) Search the menu within that restaurant for the dish.
+    let menuRes;
+    try {
+      menuRes = await swiggy.callTool("search_menu", {
+        addressId,
+        query: intent.dish,
+        restaurantIdOfAddedItem: restaurant.id,
+      });
+    } catch (err) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: `Couldn't browse the menu: ${(err as Error).message.split("\n")[0]}`,
+      };
+    }
+    const item = pickBestMenuItem(menuRes, intent.budgetRupees);
+    if (!item) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: intent.budgetRupees
+          ? `No "${intent.dish}" under ₹${intent.budgetRupees} at ${restaurant.name}.`
+          : `No "${intent.dish}" on the ${restaurant.name} menu.`,
+      };
+    }
+    safeLog("agent.searcher.item", { id: item.menu_item_id, name: item.name, price: item.price ?? item.final_price });
+
+    // 3) Add to cart. Skip items requiring variant/addon selection in v1.
+    if (item.hasVariants || item.hasAddons) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: `"${item.name}" needs customisation (size / addons) which Last Bite v1 doesn't support yet. Try a simpler item.`,
+      };
+    }
+
+    try {
+      await swiggy.callTool("update_food_cart", {
+        addressId,
+        restaurantId: restaurant.id,
+        cartItems: [{ menu_item_id: String(item.menu_item_id ?? item.id), quantity: intent.qty }],
+      });
+    } catch (err) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: `Couldn't add to cart: ${(err as Error).message.split("\n")[0]}`,
+      };
+    }
+
+    // 4) Fetch the populated cart.
+    let cartRes;
+    try {
+      cartRes = await swiggy.callTool("get_food_cart", {
+        addressId,
+        restaurantName: restaurant.name,
+      });
+    } catch (err) {
+      return {
+        status: "failed" as RunStatus,
+        failureReason: `Couldn't read the cart: ${(err as Error).message.split("\n")[0]}`,
+      };
+    }
+    const cart = tryParseCart(cartRes, {
+      restaurantIdHint: restaurant.id,
+      restaurantNameHint: restaurant.name,
     });
-    const cart = coerceToCart(result);
     if (!cart) {
       return {
         status: "failed" as RunStatus,
-        failureReason: "Couldn't build a cart from your request. Try: \"biryani from Paradise, ₹500\".",
+        failureReason: "Cart wasn't readable. Swiggy may not deliver to your selected address.",
       };
     }
     if (cart.totalRupees >= MAX_ORDER_VALUE_RUPEES) {
       return {
         status: "failed" as RunStatus,
-        failureReason: `Cart is ₹${cart.totalRupees}. Swiggy MCP caps beta orders below ₹${MAX_ORDER_VALUE_RUPEES}. Use the Swiggy app for larger orders.`,
+        failureReason: `Cart is ₹${cart.totalRupees}. Swiggy MCP caps beta orders below ₹${MAX_ORDER_VALUE_RUPEES}.`,
       };
     }
     return { cart, addressId };
