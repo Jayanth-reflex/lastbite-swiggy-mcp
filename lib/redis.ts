@@ -20,11 +20,14 @@ export function redis(): KvStore {
     _redis = makeMemoryStore();
     return _redis;
   }
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  // Accept either the Upstash-native env names (manual setup) or the
+  // Vercel Marketplace names (auto-injected by `vercel integration add
+  // upstash/upstash-kv`, which carries the legacy Vercel KV naming).
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (!url || !token) {
     throw new Error(
-      "UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN missing — see .env.example. Set LASTBITE_OFFLINE=1 for in-memory dev.",
+      "Upstash Redis env missing. Provision via `vercel integration add upstash/upstash-kv`, or set UPSTASH_REDIS_REST_URL/TOKEN, or LASTBITE_OFFLINE=1 for in-memory dev.",
     );
   }
   _redis = new Redis({ url, token }) as unknown as KvStore;

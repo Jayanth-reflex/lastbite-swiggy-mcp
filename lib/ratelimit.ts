@@ -10,8 +10,8 @@ let _connectLimiter: Ratelimit | null = null;
  */
 export function connectLimiter(): Ratelimit | null {
   if (process.env.LASTBITE_OFFLINE === "1") return null;
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL ?? process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.KV_REST_API_TOKEN;
   if (!url || !token) return null;
   if (_connectLimiter) return _connectLimiter;
   _connectLimiter = new Ratelimit({
