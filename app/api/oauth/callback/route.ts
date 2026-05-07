@@ -9,6 +9,7 @@ import {
   stateCookieHeaders,
 } from "@/lib/swiggy-oauth";
 import { setByocToken } from "@/lib/byoc";
+import { sealSession, setSessionCookie } from "@/lib/session";
 import { newRequestId, withLogContext } from "@/lib/log-context";
 import { safeLog } from "@/lib/redact";
 
@@ -91,8 +92,12 @@ async function handle(req: Request) {
 
   const successUrl = `${siteUrl()}/connect/success?phone=${encodeURIComponent(opened.phone)}`;
   const res = NextResponse.redirect(successUrl, 303);
+  // Clear OAuth state cookie + issue auth session cookie.
   for (const [k, v] of Object.entries(stateCookieHeaders("", "clear"))) {
     res.headers.set(k, v);
+  }
+  for (const [k, v] of Object.entries(setSessionCookie(sealSession(opened.phone), "set"))) {
+    res.headers.append(k, v);
   }
   return res;
 }

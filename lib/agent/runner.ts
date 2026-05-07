@@ -145,8 +145,12 @@ function pickPendingInterrupt(tasks: TaskLike[]): InterruptPayloadT | null {
 }
 
 function terminalReply(state: LastBiteStateT): string {
+  const isDemo = state.orderId?.startsWith("demo_") === true;
   switch (state.status) {
     case "placed":
+      if (isDemo) {
+        return `🧪 Demo order placed (no real Swiggy order). ID: ${state.orderId}.\nPowered by Swiggy.`;
+      }
       return `Order placed. ID: ${state.orderId ?? "unknown"}.\nPowered by Swiggy.`;
     case "cancelled":
       return `Cancelled. No order placed.\nPowered by Swiggy.`;

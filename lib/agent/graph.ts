@@ -379,6 +379,19 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
       };
     }
 
+    // Demo mode: NEVER call Swiggy place_food_order unless explicitly
+    // opted in via LB_REAL_ORDERS=1 on the server. Default-safe to
+    // protect users + tests from accidental ₹ charges.
+    if (process.env.LB_REAL_ORDERS !== "1") {
+      safeLog("agent.placer.demo-mode", { userId: state.userId });
+      const demoId = `demo_${Date.now().toString(36)}`;
+      return {
+        status: "placed" as RunStatus,
+        orderId: demoId,
+        gatesPassed: { ...state.gatesPassed, final: true },
+      };
+    }
+
     try {
       // place_food_order's actual schema (per Swiggy MCP /tools/list):
       //   { addressId: string (req), paymentMethod?: string }

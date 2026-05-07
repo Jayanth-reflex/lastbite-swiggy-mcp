@@ -1,10 +1,18 @@
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { ArrowRight, ShieldCheck, MessageCircle, Timer, KeyRound, CheckCircle2 } from "lucide-react";
+import { readSessionCookie } from "@/lib/session";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-export default function Home() {
+export default async function Home() {
+  const jar = await cookies();
+  const session = readSessionCookie(jar.toString());
+  const cta = session
+    ? { href: "/order/new", label: "Open chat" }
+    : { href: "/connect", label: "Get started" };
+
   return (
     <main className="flex flex-1 flex-col">
       {/* Hero */}
@@ -23,8 +31,8 @@ export default function Home() {
         </p>
         <div className="flex flex-wrap gap-3">
           <Button asChild size="lg">
-            <Link href="/connect">
-              Get started
+            <Link href={cta.href}>
+              {cta.label}
               <ArrowRight className="ml-1.5 h-4 w-4" />
             </Link>
           </Button>

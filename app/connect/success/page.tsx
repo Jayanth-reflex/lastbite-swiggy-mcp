@@ -40,32 +40,21 @@ export default async function ConnectSuccessPage({ searchParams }: PageProps) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <MessageCircle className="h-5 w-5" />
-              Try your first order on WhatsApp
+              Try your first order
             </CardTitle>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
-            {waLink ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  Tap below to open WhatsApp pre-filled with a sample order. Send anything in plain English — we'll walk you through three confirmation gates.
-                </p>
-                <Button asChild size="lg" className="self-start">
-                  <a href={waLink} target="_blank" rel="noreferrer">
-                    Message Last Bite on WhatsApp
-                  </a>
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Sample message: <code className="rounded bg-secondary px-1.5 py-0.5">{exampleQuery}</code>
-                </p>
-              </>
-            ) : (
-              <>
-                <Badge variant="secondary" className="self-start">Coming soon</Badge>
-                <p className="text-sm text-muted-foreground">
-                  Last Bite isn't paired with a WhatsApp number yet. Once it is, we'll DM you on{" "}
-                  {masked ?? "the number you registered"} so you can place your first order.
-                </p>
-              </>
+            <p className="text-sm text-muted-foreground">
+              Open the chat and tell me what you'd like — for example{" "}
+              <code className="rounded bg-secondary px-1.5 py-0.5">{exampleQuery}</code>. I'll walk you through three confirmation gates.
+            </p>
+            <Button asChild size="lg" className="self-start">
+              <Link href="/order/new">Open chat →</Link>
+            </Button>
+            {waLink && (
+              <p className="text-xs text-muted-foreground">
+                Prefer WhatsApp? You can also <a href={waLink} target="_blank" rel="noreferrer" className="underline">message Last Bite</a> directly.
+              </p>
             )}
           </CardContent>
         </Card>
