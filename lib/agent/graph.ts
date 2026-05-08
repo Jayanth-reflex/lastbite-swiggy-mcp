@@ -379,25 +379,21 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
       return { cart: SMOKE_CART, addressId: state.addressId ?? "smoke-addr-001" };
     }
 
-    // 0) Parse the user's intent via Groq 8B (no regex).
+    // 0) Parse the user's intent via Groq (no regex). Model must support
+    //    json_schema response format; see lib/agent/intent.ts.
     let intent: Intent;
     try {
       intent = await parseIntent(state.query);
     } catch (err) {
-      const e = err as Error & { cause?: unknown; code?: string; status?: number };
+      const e = err as Error & { cause?: unknown };
       safeLog("agent.searcher.intent-failed", {
-        name: e.name,
         message: e.message,
-        code: e.code,
-        status: e.status,
         causeMessage: (e.cause as Error | undefined)?.message,
-        groqKeySet: Boolean(process.env.GROQ_API_KEY) && process.env.GROQ_API_KEY!.length > 0,
-        intentModel: process.env.LASTBITE_INTENT_MODEL ?? "llama-3.1-8b-instant",
       });
       return {
         status: "failed" as RunStatus,
         failureReason:
-          `Intent parser error: ${e.message?.slice(0, 200) ?? "unknown"}. (Diagnostic mode — will revert.)`,
+          "Couldn't understand that order. Try: 'chocolate ice cream within 5km of MyHome under ₹300'.",
       };
     }
     safeLog("agent.searcher.intent", intent);
