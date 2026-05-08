@@ -1,7 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, MessageCircle, Sparkles } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { CheckCircle2, MessageCircle, Sparkles, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface PageProps {
@@ -19,61 +17,85 @@ export default async function ConnectSuccessPage({ searchParams }: PageProps) {
     : null;
 
   return (
-    <main className="flex flex-1 flex-col">
-      <section className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-6 py-16">
-        <div className="flex flex-col items-start gap-3">
-          <div className="rounded-full bg-emerald-100 p-3 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300">
+    <main className="relative flex flex-1 flex-col">
+      <div aria-hidden className="absolute inset-x-0 top-0 h-72 hero-glow" />
+      <section className="relative mx-auto flex w-full max-w-xl flex-col gap-10 px-6 py-16 sm:py-24">
+        <div className="flex flex-col items-start gap-4">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30">
             <CheckCircle2 className="h-6 w-6" />
           </div>
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
-            You're connected
-          </h1>
-          {masked && (
-            <p className="text-muted-foreground">
-              Your Swiggy access token is sealed and paired with{" "}
-              <span className="rounded bg-secondary px-2 py-0.5 font-mono text-sm text-foreground">{masked}</span>.
-            </p>
-          )}
-        </div>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MessageCircle className="h-5 w-5" />
-              Try your first order
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Open the chat and tell me what you'd like — for example{" "}
-              <code className="rounded bg-secondary px-1.5 py-0.5">{exampleQuery}</code>. I'll walk you through three confirmation gates.
-            </p>
-            <Button asChild size="lg" className="self-start">
-              <Link href="/order/new">Open chat →</Link>
-            </Button>
-            {waLink && (
-              <p className="text-xs text-muted-foreground">
-                Prefer WhatsApp? You can also <a href={waLink} target="_blank" rel="noreferrer" className="underline">message Last Bite</a> directly.
+          <div className="flex flex-col gap-2">
+            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground">
+              <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500" />
+              Step 2 of 2 · Connected
+            </span>
+            <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+              You're connected
+            </h1>
+            {masked && (
+              <p className="text-pretty text-muted-foreground">
+                Your Swiggy access token is sealed and paired with{" "}
+                <span className="rounded-md bg-secondary px-1.5 py-0.5 font-mono text-sm text-foreground">
+                  {masked}
+                </span>
+                .
               </p>
             )}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
 
-        <Card className="border-orange-200/60 bg-orange-50/40 dark:bg-orange-500/5">
-          <CardContent className="flex items-start gap-3 p-5 text-sm">
-            <Sparkles className="mt-0.5 h-4 w-4 text-orange-600" />
-            <div>
-              <p className="font-medium">Three gates, then a 30-second grace timer</p>
-              <p className="mt-1 text-muted-foreground">
-                Calorie → ETA → final confirm. After the final YES, you have 30 seconds to reply <code className="rounded bg-background/60 px-1 py-0.5">STOP</code> before the order goes in. COD only, ₹999 cap during beta.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="rounded-2xl bg-card p-6 ring-1 ring-foreground/[0.06] sm:p-7">
+          <div className="mb-4 flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-muted-foreground" />
+            <h2 className="font-semibold">Try your first order</h2>
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            Open the chat and tell me what you'd like — for example{" "}
+            <code className="rounded bg-secondary px-1.5 py-0.5 font-mono text-xs text-foreground">
+              {exampleQuery}
+            </code>
+            . I'll walk you through three confirmation gates.
+          </p>
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <Button asChild size="lg">
+              <Link href="/order/new">
+                Open chat
+                <ArrowRight className="ml-1.5 h-4 w-4" />
+              </Link>
+            </Button>
+            {waLink && (
+              <a
+                href={waLink}
+                target="_blank"
+                rel="noreferrer"
+                className="text-sm text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                Or message on WhatsApp →
+              </a>
+            )}
+          </div>
+        </div>
 
-        <p className="text-sm text-muted-foreground">
-          Want out? Reply <code className="rounded bg-secondary px-1 py-0.5">FORGET ME</code> on WhatsApp anytime — we'll wipe your token and any in-flight order. Or read the{" "}
-          <Link href="/privacy" className="underline">privacy policy</Link>.
+        <div className="flex items-start gap-3 rounded-xl border border-border/60 bg-brand-soft/40 p-4 text-sm">
+          <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+          <div>
+            <p className="font-medium">Three gates, then a 30-second grace timer</p>
+            <p className="mt-1 leading-relaxed text-muted-foreground">
+              Calorie → ETA → final confirm. After the final YES, you have 30 seconds to reply{" "}
+              <code className="rounded bg-background/80 px-1 py-0.5 font-mono text-xs">STOP</code>
+              {" "}before the order goes in. COD only, ₹999 cap during beta.
+            </p>
+          </div>
+        </div>
+
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Want out? Reply{" "}
+          <code className="rounded bg-secondary px-1 py-0.5 font-mono">FORGET ME</code> on
+          WhatsApp anytime — we'll wipe your token and any in-flight order. Or read the{" "}
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            privacy policy
+          </Link>
+          .
         </p>
       </section>
     </main>

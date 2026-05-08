@@ -1,26 +1,34 @@
 import Link from "next/link";
-import { PoweredBySwiggy } from "@/components/powered-by-swiggy";
 
 export function Header() {
   return (
-    <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 w-full max-w-5xl items-center gap-4 px-6">
-        <Link href="/" className="flex items-center gap-2 font-semibold tracking-tight">
-          <span aria-hidden className="inline-block h-2.5 w-2.5 rounded-full bg-orange-500" />
-          Last Bite
+    <header className="sticky top-0 z-30 border-b border-border/50 bg-background/70 backdrop-blur-xl supports-[backdrop-filter]:bg-background/50">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center px-6">
+        <Link
+          href="/"
+          className="group flex items-center gap-2.5 font-semibold tracking-tight"
+        >
+          <Logo />
+          <span>Last Bite</span>
         </Link>
-        <nav className="ml-auto flex items-center gap-5 text-sm text-muted-foreground">
-          <Link href="/#how-it-works" className="hover:text-foreground">
+        <nav className="ml-auto flex items-center gap-6 text-sm text-muted-foreground">
+          <Link
+            href="/#how-it-works"
+            className="transition-colors hover:text-foreground"
+          >
             How it works
           </Link>
-          <Link href="/privacy" className="hover:text-foreground">
+          <Link
+            href="/privacy"
+            className="transition-colors hover:text-foreground"
+          >
             Privacy
           </Link>
           <a
             href="https://github.com/Jayanth-reflex/swiggy-mcp"
             target="_blank"
             rel="noreferrer"
-            className="hidden hover:text-foreground sm:inline"
+            className="hidden transition-colors hover:text-foreground sm:inline"
           >
             GitHub
           </a>
@@ -32,30 +40,55 @@ export function Header() {
 
 export function Footer() {
   return (
-    <footer className="mt-12 border-t border-border/60">
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-6 py-8 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <span className="font-medium text-foreground">Last Bite</span>
-          <span>WhatsApp-native Swiggy ordering with three gates and a 30-second grace timer.</span>
-        </div>
-        <div className="flex flex-wrap items-center gap-4">
-          <Link href="/privacy" className="hover:text-foreground">
-            Privacy
+    <footer className="mt-16 border-t border-border/50">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 px-6 py-10 sm:flex-row sm:items-end sm:justify-between">
+        <div className="flex flex-col gap-2">
+          <Link href="/" className="flex items-center gap-2.5 font-semibold tracking-tight">
+            <Logo />
+            <span>Last Bite</span>
           </Link>
-          <a
-            href="https://github.com/Jayanth-reflex/swiggy-mcp"
-            target="_blank"
-            rel="noreferrer"
-            className="hover:text-foreground"
-          >
-            GitHub
-          </a>
-          <a href="mailto:hello@lastbite.fun" className="hover:text-foreground">
-            Support
-          </a>
+          <p className="max-w-md text-sm text-muted-foreground">
+            Three confirmation gates and a 30-second grace timer before any COD order goes through.
+          </p>
+        </div>
+        <div className="flex flex-col items-start gap-3 text-sm text-muted-foreground sm:items-end">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+            <Link href="/privacy" className="transition-colors hover:text-foreground">
+              Privacy
+            </Link>
+            <a
+              href="https://github.com/Jayanth-reflex/swiggy-mcp"
+              target="_blank"
+              rel="noreferrer"
+              className="transition-colors hover:text-foreground"
+            >
+              GitHub
+            </a>
+            <a
+              href="mailto:hello@lastbite.fun"
+              className="transition-colors hover:text-foreground"
+            >
+              Support
+            </a>
+          </div>
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
+            Powered by Swiggy
+          </span>
         </div>
       </div>
-      <PoweredBySwiggy />
     </footer>
+  );
+}
+
+function Logo() {
+  return (
+    <span
+      aria-hidden
+      className="relative inline-flex h-6 w-6 items-center justify-center rounded-md bg-foreground text-background"
+    >
+      <span className="block h-2 w-2 rounded-full bg-brand" />
+      <span className="absolute -inset-px rounded-md ring-1 ring-foreground/10" />
+    </span>
   );
 }

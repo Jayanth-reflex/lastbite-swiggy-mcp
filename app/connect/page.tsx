@@ -3,15 +3,14 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, KeyRound, MessageCircle, ShieldCheck, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  ArrowRight,
+  KeyRound,
+  MessageCircle,
+  ShieldCheck,
+  AlertCircle,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 const ERROR_MESSAGES: Record<string, string> = {
   state_invalid: "The sign-in link expired or was tampered with. Please try again.",
@@ -32,14 +31,21 @@ function errorMessage(key: string | null): string | null {
 
 export default function ConnectPage() {
   return (
-    <main className="flex flex-1 flex-col">
-      <section className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-6 py-12 sm:py-16">
+    <main className="relative flex flex-1 flex-col">
+      <div aria-hidden className="absolute inset-x-0 top-0 h-72 hero-glow" />
+      <section className="relative mx-auto flex w-full max-w-xl flex-col gap-10 px-6 py-16 sm:py-24">
         <div className="flex flex-col gap-3">
-          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground">
+            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
+            Step 1 of 2 · Sign in
+          </span>
+          <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
             Connect your Swiggy account
           </h1>
-          <p className="text-muted-foreground">
-            One click sends you to Swiggy's secure sign-in. You verify with the same OTP you'd use in the Swiggy app, and we get an access token scoped to <em>your</em> orders. We never see your password.
+          <p className="text-pretty text-muted-foreground">
+            One click sends you to Swiggy's secure sign-in. You verify with the same OTP you'd
+            use in the Swiggy app, and we get an access token scoped to <em>your</em> orders.
+            We never see your password.
           </p>
         </div>
 
@@ -49,24 +55,28 @@ export default function ConnectPage() {
 
         <ul className="grid gap-3 sm:grid-cols-3">
           <Hint
-            icon={<KeyRound className="h-4 w-4" />}
+            icon={<KeyRound className="h-3.5 w-3.5" />}
             title="Swiggy OTP only"
-            text="Sign in with phone + OTP on Swiggy's own page. We don't see it."
+            text="Sign in on Swiggy's own page. We don't see your OTP."
           />
           <Hint
-            icon={<ShieldCheck className="h-4 w-4" />}
+            icon={<ShieldCheck className="h-3.5 w-3.5" />}
             title="Encrypted at rest"
-            text="Your token is sealed with AES-256-GCM before storage."
+            text="Your token is sealed with AES-256-GCM."
           />
           <Hint
-            icon={<MessageCircle className="h-4 w-4" />}
+            icon={<MessageCircle className="h-3.5 w-3.5" />}
             title="Wipe anytime"
-            text="Reply FORGET ME on WhatsApp to instantly delete your token."
+            text="Reply FORGET ME on WhatsApp."
           />
         </ul>
 
         <p className="text-xs text-muted-foreground">
-          By continuing, you agree to our <Link href="/privacy" className="underline">privacy policy</Link>.
+          By continuing, you agree to our{" "}
+          <Link href="/privacy" className="underline-offset-4 hover:underline">
+            privacy policy
+          </Link>
+          .
         </p>
       </section>
     </main>
@@ -106,68 +116,87 @@ function ConnectForm() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Pair your WhatsApp</CardTitle>
-        <CardDescription>
+    <div className="rounded-2xl bg-card p-6 ring-1 ring-foreground/[0.06] sm:p-7">
+      <div className="mb-5 flex flex-col gap-1">
+        <h2 className="font-semibold">Pair your WhatsApp</h2>
+        <p className="text-sm text-muted-foreground">
           We'll DM you on this number once your token is connected.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form className="flex flex-col gap-4" onSubmit={submit}>
-          {error && (
-            <div className="flex items-start gap-2 rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-              <span>{error}</span>
-            </div>
+        </p>
+      </div>
+      <form className="flex flex-col gap-4" onSubmit={submit}>
+        {error && (
+          <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm text-destructive">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+        <Field
+          label="WhatsApp number"
+          hint="Include the country code, e.g. +91 98765 00001"
+        >
+          <input
+            required
+            inputMode="tel"
+            autoComplete="tel"
+            placeholder="+91 98765 00001"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
+            className="h-11 w-full rounded-lg border border-input bg-background px-3.5 text-base outline-none transition-colors focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/30"
+          />
+        </Field>
+        <Field label="Invite code" hint="Optional, only if you have one">
+          <input
+            inputMode="text"
+            autoComplete="off"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            className="h-11 w-full rounded-lg border border-input bg-background px-3.5 text-base outline-none transition-colors focus-visible:border-brand focus-visible:ring-2 focus-visible:ring-brand/30"
+          />
+        </Field>
+        <Button type="submit" size="lg" disabled={submitting || !phone}>
+          {submitting ? (
+            "Redirecting to Swiggy…"
+          ) : (
+            <>
+              Continue with Swiggy
+              <ArrowRight className="ml-1.5 h-4 w-4" />
+            </>
           )}
-          <Field label="WhatsApp number" hint="Include the country code, e.g. +91 98765 00001">
-            <input
-              required
-              inputMode="tel"
-              autoComplete="tel"
-              placeholder="+919876500001"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              className="h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </Field>
-          <Field label="Invite code (only if you have one)">
-            <input
-              inputMode="text"
-              autoComplete="off"
-              value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
-              className="h-11 w-full rounded-md border border-input bg-background px-3 text-base outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
-          </Field>
-          <Button type="submit" size="lg" disabled={submitting || !phone}>
-            {submitting ? "Redirecting to Swiggy…" : (
-              <>
-                Continue with Swiggy
-                <ArrowRight className="ml-1.5 h-4 w-4" />
-              </>
-            )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
+        </Button>
+      </form>
+    </div>
   );
 }
 
-function Hint({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+function Hint({
+  icon,
+  title,
+  text,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  text: string;
+}) {
   return (
-    <li className="flex items-start gap-2 rounded-lg border border-border/60 p-3 text-sm">
-      <span className="mt-0.5 text-muted-foreground">{icon}</span>
-      <span>
-        <span className="font-medium">{title}</span>
-        <span className="block text-muted-foreground">{text}</span>
+    <li className="flex flex-col gap-1.5 rounded-xl bg-card p-4 ring-1 ring-foreground/[0.06]">
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-md bg-secondary text-muted-foreground">
+        {icon}
       </span>
+      <span className="text-sm font-medium">{title}</span>
+      <span className="text-xs leading-relaxed text-muted-foreground">{text}</span>
     </li>
   );
 }
 
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+function Field({
+  label,
+  hint,
+  children,
+}: {
+  label: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-sm font-medium">{label}</span>

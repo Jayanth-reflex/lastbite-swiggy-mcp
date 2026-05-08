@@ -15,7 +15,7 @@ export function PoweredBySwiggy({ className, variant = "footer" }: Props) {
     return (
       <span
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-full bg-orange-50 px-2.5 py-1 text-xs font-medium text-orange-900",
+          "inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-brand-soft px-2.5 py-1 text-xs font-medium text-brand-muted",
           className,
         )}
       >
@@ -27,7 +27,7 @@ export function PoweredBySwiggy({ className, variant = "footer" }: Props) {
   return (
     <div
       className={cn(
-        "flex items-center justify-center gap-2 border-t border-border/60 py-4 text-xs text-muted-foreground",
+        "flex items-center justify-center gap-2 py-3 text-xs text-muted-foreground",
         className,
       )}
     >
@@ -41,7 +41,7 @@ function SwiggyDot() {
   return (
     <span
       aria-hidden="true"
-      className="inline-block h-2 w-2 rounded-full bg-orange-500"
+      className="inline-block h-1.5 w-1.5 rounded-full bg-brand"
     />
   );
 }
