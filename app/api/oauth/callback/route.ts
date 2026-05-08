@@ -64,7 +64,8 @@ async function handle(req: Request) {
   let clientId: string;
   try {
     clientId = await registerClient(redirectUri);
-  } catch {
+  } catch (err) {
+    safeLog("oauth.callback.register-failed", { message: (err as Error).message });
     return bounce("register_failed");
   }
 

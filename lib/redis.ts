@@ -1,5 +1,6 @@
 import { Redis } from "@upstash/redis";
 import { createHash, randomBytes } from "node:crypto";
+import { safeLog } from "@/lib/redact";
 
 interface SetOptions {
   ex?: number;
@@ -144,9 +145,27 @@ export async function awaitGrace(
   pollMs = 750,
 ): Promise<GraceOutcome> {
   const deadline = Date.now() + seconds * 1000;
+  let consecutiveFailures = 0;
   while (Date.now() < deadline) {
-    const v = await redis().get<string>(`grace:${orderRef}`);
-    if (v === "cancelled") return "cancelled";
+    try {
+      const v = await redis().get<string>(`grace:${orderRef}`);
+      if (v === "cancelled") return "cancelled";
+      consecutiveFailures = 0;
+    } catch (err) {
+      // A transient Redis blip should not commit the order — but it should
+      // also not abort the grace timer. Count failures: bail out as
+      // "cancelled" (safer default) if Redis is consistently broken.
+      consecutiveFailures += 1;
+      safeLog("grace.poll.redis-failed", {
+        orderRef,
+        consecutiveFailures,
+        message: (err as Error).message,
+      });
+      if (consecutiveFailures >= 5) {
+        safeLog("grace.poll.giving-up", { orderRef, consecutiveFailures });
+        return "cancelled";
+      }
+    }
     await new Promise((r) => setTimeout(r, pollMs));
   }
   return "committed";

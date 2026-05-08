@@ -7,11 +7,43 @@ import { safeLog } from "@/lib/redact";
 
 export type SwiggySurface = "food" | "instamart" | "dineout";
 
+export type SwiggyMcpErrorKind =
+  | "auth"
+  | "rate-limit"
+  | "not-found"
+  | "address-stale"
+  | "other";
+
 export class SwiggyMcpError extends Error {
+  readonly kind: SwiggyMcpErrorKind;
   constructor(public readonly tool: string, public readonly text: string) {
     super(`Swiggy MCP ${tool} failed: ${text.slice(0, 240)}`);
     this.name = "SwiggyMcpError";
+    this.kind = classifyMcpError(text);
   }
+}
+
+/**
+ * Classify a Swiggy MCP error string into a coarse kind so callers can
+ * branch reliably without re-implementing brittle substring matching at
+ * every site. Keep this conservative: prefer "other" over a wrong
+ * classification — the chat route wipes the user's token only on "auth".
+ */
+function classifyMcpError(text: string): SwiggyMcpErrorKind {
+  const t = text.toLowerCase();
+  // Word-boundary matches on status codes — \b401 won't match "4015 bytes".
+  if (/\b401\b|\b403\b/.test(t)) return "auth";
+  if (
+    /\bunauthorized\b|\bforbidden\b|invalid token|token expired|authentication required/.test(
+      t,
+    )
+  ) {
+    return "auth";
+  }
+  if (/\b429\b|rate ?limit|too many requests/.test(t)) return "rate-limit";
+  if (/address.*not found|address.*invalid/i.test(t)) return "address-stale";
+  if (/\b404\b|\bnot found\b/.test(t)) return "not-found";
+  return "other";
 }
 
 interface CallToolResult {
@@ -125,7 +157,14 @@ export class SwiggyClient {
   async close(): Promise<void> {
     if (!this.clientPromise) return;
     const c = await this.clientPromise;
-    await c.close().catch(() => {});
+    // Log close failures: under Vercel Fluid Compute concurrency a quietly
+    // leaking HTTP/2 socket adds up across requests until cold-start.
+    await c.close().catch((err) => {
+      safeLog("swiggy.close-failed", {
+        surface: this.surface,
+        message: (err as Error).message,
+      });
+    });
     this.clientPromise = null;
     this.toolsPromise = null;
   }
@@ -141,10 +180,21 @@ export class SwiggyClient {
     try {
       const tools = await probe.tools();
       return Object.keys(tools).length > 0;
-    } catch {
+    } catch (err) {
+      // Log distinctly so a Swiggy outage doesn't look like a bad token in
+      // the operator dashboard.
+      safeLog("swiggy.validate-failed", {
+        surface,
+        message: (err as Error).message,
+      });
       return false;
     } finally {
-      await probe.close().catch(() => {});
+      await probe.close().catch((err) => {
+        safeLog("swiggy.validate.close-failed", {
+          surface,
+          message: (err as Error).message,
+        });
+      });
     }
   }
 

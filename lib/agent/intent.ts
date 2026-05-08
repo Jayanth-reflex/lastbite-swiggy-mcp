@@ -82,17 +82,55 @@ If the user names a restaurant explicitly (e.g. 'from Paradise'), put
 it in restaurantHint and leave cuisine null unless the user also said
 the cuisine independently.`;
 
+/** Coarse classification so callers can show the right user message and
+ *  page operators can grep logs by failure class. */
+export type IntentErrorKind =
+  | "timeout"
+  | "rate-limit"
+  | "config" // missing/invalid GROQ_API_KEY etc.
+  | "schema" // model returned JSON but it failed Zod validation
+  | "other";
+
+export class IntentParseError extends Error {
+  constructor(public readonly kind: IntentErrorKind, message: string) {
+    super(message);
+    this.name = "IntentParseError";
+  }
+}
+
 export async function parseIntent(text: string): Promise<Intent> {
-  const result = await generateObject({
-    model: groq(INTENT_MODEL),
-    schema: Intent,
-    system: SYSTEM,
-    prompt: text,
-    providerOptions: {
-      groq: { structuredOutputs: true, strictJsonSchema: false },
-    },
-    abortSignal: AbortSignal.timeout(15_000),
-    maxRetries: 0,
-  });
-  return result.object;
+  try {
+    const result = await generateObject({
+      model: groq(INTENT_MODEL),
+      schema: Intent,
+      system: SYSTEM,
+      prompt: text,
+      providerOptions: {
+        groq: { structuredOutputs: true, strictJsonSchema: false },
+      },
+      abortSignal: AbortSignal.timeout(15_000),
+      maxRetries: 0,
+    });
+    return result.object;
+  } catch (err) {
+    throw new IntentParseError(classifyIntentError(err), (err as Error).message);
+  }
+}
+
+function classifyIntentError(err: unknown): IntentErrorKind {
+  if (!(err instanceof Error)) return "other";
+  const name = err.name ?? "";
+  const msg = err.message.toLowerCase();
+  if (name === "AbortError" || /timeout|aborted/.test(msg)) return "timeout";
+  if (/\b429\b|rate ?limit|too many requests|quota/.test(msg)) return "rate-limit";
+  if (/\b401\b|\b403\b|api ?key|unauthorized|invalid_api_key|missing.*key/.test(msg)) {
+    return "config";
+  }
+  if (
+    err.name === "AI_NoObjectGeneratedError" ||
+    /response did not match schema|invalid_type|zod/.test(msg)
+  ) {
+    return "schema";
+  }
+  return "other";
 }

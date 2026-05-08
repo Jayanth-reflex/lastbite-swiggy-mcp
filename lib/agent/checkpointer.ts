@@ -41,7 +41,16 @@ export async function getCheckpointer(): Promise<BaseCheckpointSaver> {
     });
   }
   const saver = new PostgresSaver(pool);
-  if (!setupPromise) setupPromise = saver.setup();
+  // Important: clear setupPromise on rejection so a transient cold-start
+  // failure doesn't poison every subsequent caller in this lambda for the
+  // rest of its life. Without this, one bad setup() leaves a permanently
+  // rejected promise that every getCheckpointer() awaits forever.
+  if (!setupPromise) {
+    setupPromise = saver.setup().catch((err) => {
+      setupPromise = null;
+      throw err;
+    });
+  }
   await setupPromise;
   cached = saver as unknown as BaseCheckpointSaver;
   return cached;

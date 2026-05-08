@@ -12,9 +12,25 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
+/**
+ * Gate the WhatsApp webhook on a shared secret. Crucially, fail-CLOSED in
+ * production when the secret env is unset — the previous behaviour returned
+ * `true` (allow), which meant a missing or accidentally-cleared
+ * GUPSHUP_WEBHOOK_SECRET on prod would accept arbitrary inbound payloads
+ * (including ones that trigger order placement). In dev / preview we still
+ * allow unsecured calls so local testing isn't a config nightmare, but we
+ * log it so the gap is visible.
+ */
 function verifyWebhookSecret(req: Request): boolean {
   const expected = process.env.GUPSHUP_WEBHOOK_SECRET;
-  if (!expected) return true;
+  if (!expected) {
+    if (process.env.VERCEL_ENV === "production") {
+      safeLog("whatsapp.webhook.secret-missing", { rejected: true });
+      return false;
+    }
+    safeLog("whatsapp.webhook.secret-missing-dev", { allowed: true });
+    return true;
+  }
   const provided =
     req.headers.get("x-webhook-secret") ?? new URL(req.url).searchParams.get("secret");
   return provided === expected;
@@ -31,7 +47,10 @@ async function handle(req: Request) {
     return new NextResponse("forbidden", { status: 403 });
   }
 
-  const raw = await req.json().catch(() => null);
+  const raw = await req.json().catch((err) => {
+    safeLog("whatsapp.json-parse-failed", { message: (err as Error).message });
+    return null;
+  });
   const inbound = parseInbound(raw);
   if (!inbound) {
     return NextResponse.json({ ok: true, ignored: true });
@@ -54,8 +73,17 @@ async function handle(req: Request) {
 
   if (FORGET_ME.test(text)) {
     await clearByocToken(phone);
-    await cancelGrace(phone).catch(() => {});
-    await sendWhatsApp(phone, "Your token and any in-flight orders have been wiped.");
+    await cancelGrace(phone).catch((err) => {
+      safeLog("whatsapp.forget.grace-cancel-failed", {
+        phone,
+        message: (err as Error).message,
+      });
+    });
+    await sendWhatsApp(phone, "Your token and any in-flight orders have been wiped.").catch(
+      (err) => {
+        safeLog("whatsapp.forget.send-failed", { phone, message: (err as Error).message });
+      },
+    );
     return NextResponse.json({ ok: true, forgotten: true });
   }
 

@@ -6,8 +6,8 @@ import {
   StateGraph,
   interrupt,
 } from "@langchain/langgraph";
-import { parseIntent, type Intent } from "@/lib/agent/intent";
-import type { SwiggyClient } from "@/lib/mcp/swiggy-client";
+import { IntentParseError, parseIntent, type Intent } from "@/lib/agent/intent";
+import { SwiggyMcpError, type SwiggyClient } from "@/lib/mcp/swiggy-client";
 import {
   Cart,
   classifyReply,
@@ -92,9 +92,17 @@ interface AddressLike {
 }
 
 function parseRestaurants(raw: unknown): SwiggyRestaurant[] {
-  if (!raw || typeof raw !== "object") return [];
+  if (!raw || typeof raw !== "object") {
+    safeLog("agent.parse.restaurants.shape", { kind: typeof raw });
+    return [];
+  }
   const list = (raw as { restaurants?: unknown[] }).restaurants ?? [];
-  if (!Array.isArray(list)) return [];
+  if (!Array.isArray(list)) {
+    safeLog("agent.parse.restaurants.no-list", {
+      topKeys: Object.keys(raw as object).slice(0, 8),
+    });
+    return [];
+  }
   return list
     .filter((r): r is Record<string, unknown> => !!r && typeof r === "object")
     .map<SwiggyRestaurant>((r) => ({
@@ -198,7 +206,10 @@ function pickBestMenuItem(raw: unknown, intent: Intent): SwiggyMenuItem | null {
 }
 
 function extractFirstAddressId(raw: unknown): string | null {
-  if (!raw || typeof raw !== "object") return null;
+  if (!raw || typeof raw !== "object") {
+    safeLog("agent.parse.address.shape", { kind: typeof raw });
+    return null;
+  }
   const o = raw as Record<string, unknown>;
   const lists: unknown[] = [];
   if (Array.isArray(o.addresses)) lists.push(...(o.addresses as unknown[]));
@@ -206,6 +217,12 @@ function extractFirstAddressId(raw: unknown): string | null {
     lists.push(...((o.data as Record<string, unknown>).addresses as unknown[]));
   }
   if (lists.length === 0 && Array.isArray(raw)) lists.push(...(raw as unknown[]));
+  if (lists.length === 0) {
+    safeLog("agent.parse.address.no-list", {
+      topKeys: Object.keys(o).slice(0, 8),
+    });
+    return null;
+  }
   for (const item of lists) {
     if (!item || typeof item !== "object") continue;
     const a = item as AddressLike;
@@ -233,13 +250,21 @@ interface SwiggyAddress {
 }
 
 function parseAddresses(raw: unknown): SwiggyAddress[] {
-  if (!raw || typeof raw !== "object") return [];
+  if (!raw || typeof raw !== "object") {
+    safeLog("agent.parse.addresses.shape", { kind: typeof raw });
+    return [];
+  }
   const o = raw as Record<string, unknown>;
   const list = (Array.isArray(o.addresses)
     ? o.addresses
     : (o.data && typeof o.data === "object" && Array.isArray((o.data as Record<string, unknown>).addresses))
       ? ((o.data as Record<string, unknown>).addresses as unknown[])
       : []) as unknown[];
+  if (list.length === 0) {
+    safeLog("agent.parse.addresses.no-list", {
+      topKeys: Object.keys(o).slice(0, 8),
+    });
+  }
   return list
     .filter((a): a is Record<string, unknown> => !!a && typeof a === "object")
     .map<SwiggyAddress>((a) => ({
@@ -385,30 +410,44 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
     try {
       intent = await parseIntent(state.query);
     } catch (err) {
-      const e = err as Error & { cause?: unknown };
+      const kind =
+        err instanceof IntentParseError ? err.kind : "other";
       safeLog("agent.searcher.intent-failed", {
-        message: e.message,
-        causeMessage: (e.cause as Error | undefined)?.message,
+        kind,
+        message: (err as Error).message,
       });
-      return {
-        status: "failed" as RunStatus,
-        failureReason:
-          "Couldn't understand that order. Try: 'chocolate ice cream within 5km of MyHome under ₹300'.",
-      };
+      // User-facing message branches on cause: don't tell a user
+      // "couldn't understand" when the truth is "AI parser is down".
+      const failureReason =
+        kind === "timeout"
+          ? "AI parser timed out. Try again in a moment."
+          : kind === "rate-limit"
+            ? "AI parser hit rate limits. Try again in a minute."
+            : kind === "config"
+              ? "AI parser misconfigured (server-side). The site owner has been logged."
+              : "Couldn't understand that order. Try: 'chocolate ice cream within 5km of MyHome under ₹300'.";
+      return { status: "failed" as RunStatus, failureReason };
     }
     safeLog("agent.searcher.intent", intent);
 
     // 1) Resolve the right delivery address. Honour intent.addressTag.
     let addresses: SwiggyAddress[] = [];
+    let addressFetchFailed = false;
     try {
       addresses = parseAddresses(await swiggy.callTool("get_addresses", {}));
     } catch (err) {
+      addressFetchFailed = true;
       safeLog("agent.searcher.addresses-error", { message: (err as Error).message });
     }
     if (addresses.length === 0) {
+      // Distinguish "Swiggy returned an empty list" from "we couldn't reach
+      // Swiggy at all" — telling the user to add an address when the real
+      // problem is an outage just sends them on a wild-goose chase.
       return {
         status: "failed" as RunStatus,
-        failureReason: "No saved Swiggy address found. Add one in the Swiggy app and try again.",
+        failureReason: addressFetchFailed
+          ? "Couldn't reach Swiggy to load your saved addresses. Try again in a minute."
+          : "No saved Swiggy address found. Add one in the Swiggy app and try again.",
       };
     }
     const address = pickAddress(addresses, intent.addressTag);
@@ -429,28 +468,45 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
     try {
       searchRes = await swiggy.callTool("search_restaurants", { addressId, query: queryText });
     } catch (err) {
-      const msg = (err as Error).message;
-      if (/Address.*not found|address.*invalid/i.test(msg)) {
+      const originalMsg = (err as Error).message;
+      // Use the typed kind when the error is a SwiggyMcpError — otherwise
+      // fall back to substring detection on the message.
+      const isStaleAddress =
+        (err instanceof SwiggyMcpError && err.kind === "address-stale") ||
+        /Address.*not found|address.*invalid/i.test(originalMsg);
+      if (isStaleAddress) {
         // Stale-address self-heal (token-refresh case).
         try {
           const fresh = parseAddresses(await swiggy.callTool("get_addresses", {}));
           const newAddr = pickAddress(fresh, intent.addressTag);
           if (newAddr && newAddr.id !== addressId) {
+            safeLog("agent.searcher.address-refreshed", {
+              old: addressId,
+              new: newAddr.id,
+            });
             addressId = newAddr.id;
             searchRes = await swiggy.callTool("search_restaurants", { addressId, query: queryText });
           } else {
+            // Refresh didn't yield a different address — original error stands.
             throw err;
           }
         } catch (retryErr) {
+          // Preserve both errors in the log so an outage that masquerades as
+          // a stale-address can still be diagnosed. Prefer the original
+          // message for the user — it usually has the more actionable text.
+          safeLog("agent.searcher.address-retry-failed", {
+            originalMessage: originalMsg.split("\n")[0],
+            retryMessage: (retryErr as Error).message.split("\n")[0],
+          });
           return {
             status: "failed" as RunStatus,
-            failureReason: `Swiggy search failed: ${(retryErr as Error).message.split("\n")[0]}`,
+            failureReason: `Swiggy search failed (after refreshing addresses): ${originalMsg.split("\n")[0]}`,
           };
         }
       } else {
         return {
           status: "failed" as RunStatus,
-          failureReason: `Swiggy search failed: ${msg.split("\n")[0]}`,
+          failureReason: `Swiggy search failed: ${originalMsg.split("\n")[0]}`,
         };
       }
     }

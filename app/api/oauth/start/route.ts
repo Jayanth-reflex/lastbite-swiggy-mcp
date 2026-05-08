@@ -39,7 +39,10 @@ async function handle(req: Request) {
     }
   }
 
-  const raw = await req.json().catch(() => null);
+  const raw = await req.json().catch((err) => {
+    safeLog("oauth.start.json-parse-failed", { message: (err as Error).message });
+    return null;
+  });
   const parsed = Body.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(

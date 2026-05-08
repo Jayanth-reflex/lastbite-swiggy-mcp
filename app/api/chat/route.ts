@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { readSessionCookie } from "@/lib/session";
 import { processTurn, UserBusyError } from "@/lib/agent/runner";
-import { SwiggyClient } from "@/lib/mcp/swiggy-client";
+import { SwiggyClient, SwiggyMcpError } from "@/lib/mcp/swiggy-client";
 import { clearByocToken, getByocToken } from "@/lib/byoc";
 import { newRequestId, withLogContext, logContext } from "@/lib/log-context";
 import { safeLog } from "@/lib/redact";
@@ -37,7 +37,10 @@ async function handle(req: Request) {
   const ctx = logContext();
   if (ctx) ctx.userId = session.phone;
 
-  const raw = await req.json().catch(() => null);
+  const raw = await req.json().catch((err) => {
+    safeLog("chat.json-parse-failed", { message: (err as Error).message });
+    return null;
+  });
   const parsed = Body.safeParse(raw);
   if (!parsed.success) {
     return NextResponse.json(
@@ -98,20 +101,22 @@ async function handle(req: Request) {
 }
 
 /**
- * Pattern-match Swiggy MCP / @ai-sdk/mcp errors that indicate the user's
- * bearer token is no longer accepted upstream. Conservative: requires
- * either an explicit 401/403, or one of a small set of phrases that
- * Swiggy's API uses for token-rejected responses.
+ * Did Swiggy MCP reject our token?
+ *
+ * Prefer the typed `SwiggyMcpError.kind === "auth"` path — that's set inside
+ * unwrapMcpResult by classifyMcpError with proper word-boundary matching, so
+ * a body like "4015 bytes returned" can't false-positive into a token wipe.
+ *
+ * Fall back to a stricter substring check only for non-typed errors (e.g.
+ * raw network exceptions before the MCP envelope is parsed). Word boundaries
+ * matter — "404" must not look like "401".
  */
 function looksLikeAuthFailure(err: unknown): boolean {
+  if (err instanceof SwiggyMcpError) return err.kind === "auth";
   if (!(err instanceof Error)) return false;
   const msg = err.message.toLowerCase();
-  if (msg.includes("401") || msg.includes("403")) return true;
-  return (
-    msg.includes("unauthorized") ||
-    msg.includes("forbidden") ||
-    msg.includes("invalid token") ||
-    msg.includes("token expired") ||
-    msg.includes("authentication required")
+  if (/\b401\b|\b403\b/.test(msg)) return true;
+  return /\bunauthorized\b|\bforbidden\b|invalid token|token expired|authentication required/.test(
+    msg,
   );
 }
