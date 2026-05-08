@@ -62,10 +62,10 @@ function Hero({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: string }) {
           </div>
           <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
             <li className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5" /> Swiggy OTP login
+              <KeyRound className="h-3.5 w-3.5" /> BYOC token, AES-256 sealed
             </li>
             <li className="inline-flex items-center gap-1.5">
-              <KeyRound className="h-3.5 w-3.5" /> Token encrypted at rest
+              <ShieldCheck className="h-3.5 w-3.5" /> COD-only, ₹999 cap
             </li>
             <li className="inline-flex items-center gap-1.5">
               <Timer className="h-3.5 w-3.5" /> 30-second STOP window
@@ -148,7 +148,7 @@ function HowItWorks() {
           n={1}
           icon={<KeyRound className="h-4 w-4" />}
           title="Connect"
-          text="Sign in with the same Swiggy OTP you'd use in their app. We never see your password."
+          text="Authorize Swiggy MCP once in Claude Desktop, paste the bearer token here. We seal it AES-256 and never see your OTP."
         />
         <Step
           n={2}
@@ -239,8 +239,11 @@ function FAQSection() {
           q="Do I need an API key or developer account?"
           a={
             <>
-              No. You sign in with the same phone-number-and-OTP flow you use in the Swiggy app.
-              Last Bite asks Swiggy to grant ordering permission scoped to <em>your</em> account.
+              No developer account. You do need <strong>Claude Desktop</strong> with Swiggy MCP
+              configured (a one-time, ~3 minute setup) so it can run the OTP login for you. You
+              then paste the resulting bearer token into Last Bite. Step-by-step instructions are
+              on the connect page. We're working with Swiggy to skip this step once they
+              whitelist our redirect URI (<a href="https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53" target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">tracked here</a>).
             </>
           }
         />
