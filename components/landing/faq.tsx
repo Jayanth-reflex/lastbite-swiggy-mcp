@@ -1,8 +1,3 @@
-"use client";
-
-import { motion } from "motion/react";
-import { fadeUpAt, fadeUpFrom } from "@/lib/motion";
-
 const FAQS: { q: string; a: React.ReactNode }[] = [
   {
     q: "Do I need an API key or developer account?",
@@ -40,35 +35,20 @@ export function FAQSection() {
   return (
     <section className="mx-auto w-full max-w-3xl px-6 pb-24">
       <div className="mb-8 flex flex-col gap-2">
-        <motion.span
-          initial={fadeUpFrom}
-          whileInView={fadeUpAt(0)}
-          viewport={{ once: true, margin: "-80px" }}
-          className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
-        >
+        <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           FAQ
-        </motion.span>
-        <motion.h2
-          initial={fadeUpFrom}
-          whileInView={fadeUpAt(0.05)}
-          viewport={{ once: true, margin: "-80px" }}
-          className="text-3xl font-semibold tracking-tight sm:text-4xl"
-        >
-          Common questions
-        </motion.h2>
+        </span>
+        <h2 className="text-3xl font-semibold tracking-tight sm:text-4xl">Common questions</h2>
       </div>
       <dl className="divide-y divide-border/60 border-y border-border/60">
-        {FAQS.map((f, i) => (
-          <motion.div
+        {FAQS.map((f) => (
+          <div
             key={f.q}
-            initial={fadeUpFrom}
-            whileInView={fadeUpAt(i * 0.05)}
-            viewport={{ once: true, margin: "-100px" }}
             className="grid gap-2 py-6 sm:grid-cols-[1fr_2fr] sm:gap-8"
           >
             <dt className="font-medium">{f.q}</dt>
             <dd className="text-sm leading-relaxed text-muted-foreground">{f.a}</dd>
-          </motion.div>
+          </div>
         ))}
       </dl>
     </section>
