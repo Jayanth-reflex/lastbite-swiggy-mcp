@@ -25,7 +25,7 @@ export function Header() {
             Privacy
           </Link>
           <a
-            href="https://github.com/Jayanth-reflex/swiggy-mcp"
+            href="https://github.com/Jayanth-reflex/lastbite-swiggy-mcp"
             target="_blank"
             rel="noreferrer"
             className="hidden transition-colors hover:text-foreground sm:inline"
@@ -57,7 +57,7 @@ export function Footer() {
               Privacy
             </Link>
             <a
-              href="https://github.com/Jayanth-reflex/swiggy-mcp"
+              href="https://github.com/Jayanth-reflex/lastbite-swiggy-mcp"
               target="_blank"
               rel="noreferrer"
               className="transition-colors hover:text-foreground"

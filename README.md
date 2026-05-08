@@ -93,8 +93,8 @@ Tokens last ~24h. When yours expires, the chat detects Swiggy's 401, wipes the s
 ## Local dev
 
 ```bash
-git clone https://github.com/Jayanth-reflex/swiggy-mcp
-cd swiggy-mcp
+git clone https://github.com/Jayanth-reflex/lastbite-swiggy-mcp
+cd lastbite-swiggy-mcp
 npm install
 cp .env.example .env.local   # fill in Upstash + Neon + Groq + Anthropic
 npm run dev

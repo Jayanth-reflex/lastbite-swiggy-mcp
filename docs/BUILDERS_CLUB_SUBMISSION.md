@@ -30,7 +30,7 @@ I'd like to apply to the Swiggy Builders Club for **Last Bite** — a web agent 
 **The product.** Last Bite takes a natural-language order ("biryani at Paradise, ₹500" or "chocolate ice cream within 7km of MyHome, best rated, under ₹300") and walks the user through a three-stage human-in-the-loop confirmation — calorie, ETA, final — followed by a 30-second STOP grace timer before any `place_food_order` is called. COD-only by design, ₹999 cap during beta. The point: Swiggy MCP orders cannot be cancelled after they fire, so the UX should make sure they fire intentionally.
 
 **Live:** https://swiggy-mcp.vercel.app
-**Source:** https://github.com/Jayanth-reflex/swiggy-mcp
+**Source:** https://github.com/Jayanth-reflex/lastbite-swiggy-mcp
 **Demo video (90s):** [your video link here]
 **Whitelist request:** https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53
 
@@ -45,7 +45,7 @@ I'd like to apply to the Swiggy Builders Club for **Last Bite** — a web agent 
 
 **Current bridge.** Until our redirect URI is whitelisted (issue #53 above), the live site runs in BYOC mode — users authorize Swiggy MCP inside Claude Desktop, then paste their bearer token into `/connect`. We never see the OTP or password.
 
-**Roadmap.** Last Bite is Project 1 of 5 — Trail (vernacular WhatsApp + Apple Watch tracking), ChaiCal (Dineout group coordinator), Bharat Pantry (Instamart auto-restock), Saans (voice ordering in Indic languages). All five share the `SwiggyClient`, three-gate pattern, and DPDP boilerplate from Last Bite. Detailed plan in [CLAUDE.md](https://github.com/Jayanth-reflex/swiggy-mcp/blob/main/CLAUDE.md).
+**Roadmap.** Last Bite is Project 1 of 5 — Trail (vernacular WhatsApp + Apple Watch tracking), ChaiCal (Dineout group coordinator), Bharat Pantry (Instamart auto-restock), Saans (voice ordering in Indic languages). All five share the `SwiggyClient`, three-gate pattern, and DPDP boilerplate from Last Bite. Detailed plan in [CLAUDE.md](https://github.com/Jayanth-reflex/lastbite-swiggy-mcp/blob/main/CLAUDE.md).
 
 **Ask.**
 1. Whitelist `https://swiggy-mcp.vercel.app/api/oauth/callback` so the BYOC bridge can retire.

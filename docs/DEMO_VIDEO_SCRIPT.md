@@ -66,7 +66,7 @@
 **VO:** *"This is Project 1 of 5 on Swiggy MCP. Code in the description. Powered by Swiggy."*
 **On-screen lower-third:**
 - `swiggy-mcp.vercel.app`
-- `github.com/Jayanth-reflex/swiggy-mcp`
+- `github.com/Jayanth-reflex/lastbite-swiggy-mcp`
 
 ---
 
