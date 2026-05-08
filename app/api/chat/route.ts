@@ -72,7 +72,12 @@ async function handle(req: Request) {
     if (looksLikeAuthFailure(err)) {
       // Swiggy upstream rejected our token — likely revoked or 24h expiry.
       // Wipe it so the next /connect submission is clean.
-      await clearByocToken(session.phone).catch(() => {});
+      await clearByocToken(session.phone).catch((clearErr) => {
+        safeLog("chat.clear-byoc-failed", {
+          userId: session.phone,
+          message: (clearErr as Error).message,
+        });
+      });
       safeLog("chat.token-expired", { userId: session.phone });
       return NextResponse.json(
         {

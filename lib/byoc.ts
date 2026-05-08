@@ -1,5 +1,6 @@
 import { redis } from "@/lib/redis";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { safeLog } from "@/lib/redact";
 
 const TOKEN_TTL_SECONDS = 60 * 60 * 24 * 30;
 
@@ -17,7 +18,15 @@ export async function getByocToken(phone: string): Promise<string | null> {
   if (!stored) return null;
   try {
     return decrypt(stored);
-  } catch {
+  } catch (err) {
+    // Decrypt failure usually means BYOC_ENCRYPTION_KEY rotated since the
+    // ciphertext was written. The user will see "session expired" and
+    // re-paste — we self-heal — but the silent path means a key rotation
+    // can force-reconnect every user without us knowing. Log it.
+    safeLog("byoc.decrypt-failed", {
+      phone: normalisePhone(phone),
+      message: (err as Error).message,
+    });
     return null;
   }
 }

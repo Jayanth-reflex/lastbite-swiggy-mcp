@@ -3,11 +3,11 @@ import { ShieldCheck } from "lucide-react";
 const TRUST = [
   {
     title: "COD-only, by design",
-    text: "Swiggy MCP orders cannot be cancelled after they fire. The three gates and the 30-second grace timer exist to make sure that fire is intentional.",
+    text: "Swiggy MCP orders cannot be cancelled after they fire. The three gates and the 30-second grace timer exist to make sure that fire is intentional. Beta caps single orders at ₹999.",
   },
   {
-    title: "Your token, encrypted",
-    text: "Your Swiggy access token is sealed with AES-256-GCM at rest. Reply FORGET ME on WhatsApp anytime to wipe it.",
+    title: "Your token, your account",
+    text: "We hold your Swiggy MCP token encrypted at rest, redacted from every log, and use it only for the orders you confirm in the chat. To wipe it: email privacy@lastbite.fun (WhatsApp wipe is wired in code but not yet provisioned in prod).",
   },
 ];
 

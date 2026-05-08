@@ -103,14 +103,19 @@ export async function bumpLastActiveAt(userId: string, when: number = Date.now()
 }
 
 /**
- * Per-user inbound mutex. With function maxDuration=60s and lock TTL=90s,
- * the lock cannot expire before the holding work finishes, so a naive
- * compare-and-delete is sufficient. We still gate del() on the original
- * token so a delayed release can never wipe a fresh acquirer's lock.
+ * Per-user inbound mutex. The lock TTL must outlive the longest possible
+ * processTurn so a concurrent request can never enter while a prior function
+ * is still mid-flight to Swiggy MCP — that's the class of race that lets two
+ * place_food_order calls land for the same cart.
+ *
+ * Worst-case turn budget: 30s grace + ~30s MCP roundtrip + intent + searcher
+ * tool calls. Keep ttl >= chat route maxDuration (60s) + 2x safety buffer.
+ * The compare-and-delete in releaseUserLock still protects against a stale
+ * delayed release wiping a fresh acquirer's lock.
  *
  * Returns the lock token on success, null if another inbound holds it.
  */
-export async function acquireUserLock(userId: string, ttlSeconds = 90): Promise<string | null> {
+export async function acquireUserLock(userId: string, ttlSeconds = 180): Promise<string | null> {
   const token = randomBytes(8).toString("hex");
   const ok = await redis().set(`lock:user:${userId}`, token, { ex: ttlSeconds, nx: true });
   return ok === "OK" ? token : null;

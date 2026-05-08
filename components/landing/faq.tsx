@@ -1,13 +1,23 @@
 const FAQS: { q: string; a: React.ReactNode }[] = [
   {
-    q: "Do I need an API key or developer account?",
+    q: "Do I need a developer account?",
     a: (
       <>
-        No developer account. You do need <strong>Claude Desktop</strong> with Swiggy MCP
-        configured (a one-time, ~3 minute setup) so it can run the OTP login for you. You
-        then paste the resulting bearer token into Last Bite. Step-by-step instructions are
-        on the connect page. We're working with Swiggy to skip this step once they
-        whitelist our redirect URI (<a href="https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53" target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">tracked here</a>).
+        Not a developer account, but right now you do need <strong>Claude Desktop with Swiggy
+        MCP set up</strong> — Last Bite can't run Swiggy's OTP login itself yet because Swiggy
+        hasn't whitelisted our OAuth callback (
+        <a
+          href="https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53"
+          target="_blank"
+          rel="noreferrer"
+          className="underline-offset-4 hover:underline"
+        >
+          issue #53
+        </a>
+        ). The workaround: you sign in to Swiggy inside Claude Desktop once, then paste the
+        token it gives you into Last Bite. Realistic time budget: 10–15 minutes for someone
+        comfortable editing a JSON config file; longer otherwise. Full step-by-step on the
+        Connect page. The day Swiggy whitelists us, this whole step disappears.
       </>
     ),
   },

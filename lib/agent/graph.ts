@@ -665,7 +665,19 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
       // can retry. The Swiggy MCP server is the source of truth on
       // idempotency for the actual order — passing the same key again is
       // safe.
-      await releaseIdempotency(idemKey);
+      //
+      // Don't let a Redis failure during release mask the original Swiggy
+      // error — that would tell the user the wrong thing while their order
+      // may already have been placed Swiggy-side. Log and re-throw the
+      // ORIGINAL error.
+      try {
+        await releaseIdempotency(idemKey);
+      } catch (releaseErr) {
+        safeLog("agent.placer.idem-release-failed", {
+          userId: state.userId,
+          message: (releaseErr as Error).message,
+        });
+      }
       safeLog("agent.placer.error", { userId: state.userId, message: (err as Error).message });
       throw err;
     }

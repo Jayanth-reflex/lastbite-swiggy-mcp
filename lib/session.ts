@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes, scryptSync } from "node:crypto";
+import { safeLog } from "@/lib/redact";
 
 const COOKIE_NAME = "lb_session";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
@@ -39,7 +40,11 @@ export function openSession(blob: string): Session | null {
     const obj = JSON.parse(plain) as Session;
     if (!obj.phone || Date.now() > obj.expiresAt) return null;
     return obj;
-  } catch {
+  } catch (err) {
+    // Same key-rotation risk as byoc.getByocToken — silent failure here
+    // logs every existing user out as "not authenticated". Log so a key
+    // rotation accident doesn't go unnoticed.
+    safeLog("session.decrypt-failed", { message: (err as Error).message });
     return null;
   }
 }

@@ -89,13 +89,21 @@ export default async function ConnectSuccessPage({ searchParams }: PageProps) {
         </div>
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Want out? Reply{" "}
-          <code className="rounded bg-secondary px-1 py-0.5 font-mono">FORGET ME</code> on
-          WhatsApp anytime — we'll wipe your token and any in-flight order. Or read the{" "}
+          Want out? Email{" "}
+          <a
+            href="mailto:privacy@lastbite.fun"
+            className="underline-offset-4 hover:underline"
+          >
+            privacy@lastbite.fun
+          </a>{" "}
+          and we'll delete your token + history within 24h. (WhatsApp{" "}
+          <code className="rounded bg-secondary px-1 py-0.5 font-mono">FORGET ME</code> is wired
+          in code but Gupshup isn't provisioned in prod yet, so email is the working path.) See
+          the{" "}
           <Link href="/privacy" className="underline-offset-4 hover:underline">
             privacy policy
-          </Link>
-          .
+          </Link>{" "}
+          for full details.
         </p>
       </section>
     </main>

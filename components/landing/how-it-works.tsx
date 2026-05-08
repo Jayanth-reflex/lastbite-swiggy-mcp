@@ -3,23 +3,23 @@ import { CheckCircle2, KeyRound, MessageCircle, Timer } from "lucide-react";
 const STEPS = [
   {
     icon: <KeyRound className="h-4 w-4" />,
-    title: "Connect",
-    text: "Authorize Swiggy MCP once in Claude Desktop, paste the bearer token here. We seal it AES-256 and never see your OTP.",
+    title: "Connect (BYOC)",
+    text: "While Swiggy hasn't whitelisted us, you bring a token from Claude Desktop's Swiggy MCP session and paste it on the Connect page. ~10-min one-time setup; full instructions there.",
   },
   {
     icon: <MessageCircle className="h-4 w-4" />,
     title: "Tell us",
-    text: "Type or WhatsApp in plain English: 'biryani Paradise, ₹500 budget'.",
+    text: "Type in plain English: 'biryani Paradise, ₹500 budget' or 'chocolate ice cream within 7km of MyHome, best rated'.",
   },
   {
     icon: <CheckCircle2 className="h-4 w-4" />,
     title: "Three gates",
-    text: "Calorie check, ETA check, final confirm. Each waits for an explicit YES.",
+    text: "Calorie check, ETA check, final confirm. Each waits for an explicit YES so a 1am order can still earn a 'wait, no'.",
   },
   {
     icon: <Timer className="h-4 w-4" />,
     title: "30-second grace",
-    text: "A visible countdown after the final YES. Reply STOP to cancel; otherwise it commits.",
+    text: "A visible countdown after the final YES. Reply STOP to cancel; otherwise it commits as cash-on-delivery.",
   },
 ];
 

@@ -1,6 +1,7 @@
 import { generateText } from "ai";
 import { anthropic } from "@ai-sdk/anthropic";
 import type { Cart } from "@/lib/agent/schemas";
+import { safeLog } from "@/lib/redact";
 
 const PERSONA_MODEL = process.env.LASTBITE_PERSONA_MODEL ?? "claude-haiku-4-5";
 
@@ -24,7 +25,15 @@ export async function gatePrompt(input: GateInput): Promise<string> {
       prompt: gateUserPrompt(input),
     });
     return result.text.trim();
-  } catch {
+  } catch (err) {
+    // The fallback works fine functionally, but if the persona LLM is
+    // misconfigured (e.g. ANTHROPIC_API_KEY unset) every gate silently
+    // falls back to boilerplate copy and the product loses its voice.
+    // Log so we know.
+    safeLog("agent.persona.fallback", {
+      stage: input.stage,
+      message: (err as Error).message,
+    });
     return fallback(input);
   }
 }

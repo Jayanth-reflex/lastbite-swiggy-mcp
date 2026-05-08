@@ -22,9 +22,9 @@ export function Hero({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: string 
 
       <div className="relative mx-auto grid w-full max-w-6xl gap-10 px-6 pt-20 pb-16 sm:pt-28 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-16">
         <div className="flex flex-col gap-7">
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-border/60 bg-background/60 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
-            Powered by Swiggy · Beta
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+            Developer beta · requires Claude Desktop
           </span>
           <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-6xl">
             Order Swiggy in plain English.{" "}
@@ -34,6 +34,22 @@ export function Hero({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: string 
             Last Bite is an agent that takes natural-language Swiggy orders, walks them through
             three confirmation gates, then waits 30 seconds before committing. COD-only by
             design, so a sleepy ₹500 biryani never goes through without intent.
+          </p>
+          <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+            <strong className="text-foreground">Honest beta caveat.</strong> Swiggy hasn't
+            whitelisted our OAuth callback yet (
+            <a
+              href="https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53"
+              target="_blank"
+              rel="noreferrer"
+              className="text-foreground underline-offset-4 hover:underline"
+            >
+              tracked here
+            </a>
+            ), so signing in here today requires <strong className="text-foreground">Claude
+            Desktop with Swiggy MCP configured</strong> — you authorize Swiggy there once and
+            paste the resulting bearer token into Last Bite. Setup is documented step-by-step on
+            the Connect page; expect ~10 minutes if you're comfortable editing a config file.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <motion.div whileHover={{ y: -2 }} whileTap={{ scale: 0.97 }} transition={spring.snappy}>
@@ -52,13 +68,13 @@ export function Hero({ ctaHref, ctaLabel }: { ctaHref: string; ctaLabel: string 
           </div>
           <ul className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
             <li className="inline-flex items-center gap-1.5">
-              <KeyRound className="h-3.5 w-3.5" /> BYOC token, AES-256 sealed
+              <ShieldCheck className="h-3.5 w-3.5" /> COD-only, orders capped at ₹999
             </li>
             <li className="inline-flex items-center gap-1.5">
-              <ShieldCheck className="h-3.5 w-3.5" /> COD-only, ₹999 cap
+              <KeyRound className="h-3.5 w-3.5" /> Token encrypted at rest, never logged
             </li>
             <li className="inline-flex items-center gap-1.5">
-              <Timer className="h-3.5 w-3.5" /> 30-second STOP window
+              <Timer className="h-3.5 w-3.5" /> 30-second STOP window after final YES
             </li>
           </ul>
         </div>

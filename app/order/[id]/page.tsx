@@ -31,7 +31,7 @@ export default async function OrderPage({ params }: PageProps) {
           <p className="text-pretty text-muted-foreground">
             {isDemo
               ? "This was a demo run — nothing was sent to Swiggy. Use this URL to share the flow with friends."
-              : "Live tracking lands when Trail (Project 2) ships. For now, this page exists so every order has a shareable URL with the required Swiggy attribution."}
+              : "Your order is with Swiggy now. Live status will arrive on WhatsApp once that integration is provisioned in prod; until then the Swiggy app remains the source of truth. This page is your shareable receipt."}
           </p>
         </div>
 

@@ -57,11 +57,7 @@ export default function PrivacyPage() {
 
         <Section title="Your rights">
           <p className="text-sm leading-relaxed text-muted-foreground">
-            You can revoke your BYOC token at any time by replying{" "}
-            <code className="rounded bg-secondary px-1.5 py-0.5 font-mono text-xs">
-              FORGET ME
-            </code>{" "}
-            on WhatsApp or by emailing{" "}
+            You can revoke your BYOC token at any time by emailing{" "}
             <a
               href="mailto:privacy@lastbite.fun"
               className="text-foreground underline-offset-4 hover:underline"

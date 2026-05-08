@@ -120,7 +120,9 @@ Smoke tests: `npm run smoke`.
 - ✅ Modern minimalist UI redesign
 - ✅ Expired-token self-heal (Swiggy 401 → wipe + redirect to /connect)
 - ⏳ Swiggy whitelist for native OAuth (issue #53)
-- ⏳ WhatsApp integration (Gupshup webhook stub at `/api/whatsapp`)
+- ⏳ WhatsApp inbound + `FORGET ME` wipe — code is wired at `/api/whatsapp` with signature
+  verification, but the Gupshup webhook isn't provisioned in prod yet, so the only working
+  data-deletion path right now is `email privacy@lastbite.fun`.
 
 ## Roadmap (per [CLAUDE.md](./CLAUDE.md))
 

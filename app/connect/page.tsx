@@ -40,17 +40,28 @@ export default function ConnectPage() {
       <div aria-hidden className="absolute inset-x-0 top-0 h-72 hero-glow" />
       <section className="relative mx-auto flex w-full max-w-xl flex-col gap-10 px-6 py-16 sm:py-24">
         <header className="flex flex-col gap-3">
-          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-border/60 bg-card/40 px-3 py-1 text-xs font-medium text-muted-foreground backdrop-blur">
-            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-brand" />
-            Connect · Bring your own Claude
+          <span className="inline-flex w-fit items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-medium text-amber-700 dark:text-amber-300">
+            <span aria-hidden className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500" />
+            Requires Claude Desktop · BYOC bridge until Swiggy whitelists us
           </span>
           <h1 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
             Paste your Swiggy MCP token
           </h1>
           <p className="text-pretty leading-relaxed text-muted-foreground">
-            While Swiggy reviews our whitelist request, Last Bite runs in <strong className="text-foreground">BYOC mode</strong>:
-            you authorize Swiggy MCP once inside Claude Desktop, then paste the bearer token
-            here. We encrypt it at rest and use it only for the orders you confirm.
+            <strong className="text-foreground">Be honest about the friction:</strong>{" "}
+            Last Bite can't run Swiggy's OTP login itself yet because{" "}
+            <a
+              href="https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53"
+              target="_blank"
+              rel="noreferrer"
+              className="text-foreground underline-offset-4 hover:underline"
+            >
+              Swiggy hasn't whitelisted our OAuth callback
+            </a>
+            . The bridge is BYOC — you authorize Swiggy inside Claude Desktop once, then paste
+            the bearer token here. We encrypt it at rest and use it only for orders you
+            confirm in the chat. Setup walk-through is below — budget 10–15 minutes if you've
+            never edited a JSON config file.
           </p>
         </header>
 
@@ -64,17 +75,17 @@ export default function ConnectPage() {
           <Hint
             icon={<KeyRound className="h-3.5 w-3.5" />}
             title="Your token, your account"
-            text="Each token is scoped to one Swiggy account. We never see your password or OTP."
+            text="Each token is scoped to one Swiggy account. Your password and OTP go to Swiggy via Claude Desktop's OAuth — we never receive them."
           />
           <Hint
             icon={<ShieldCheck className="h-3.5 w-3.5" />}
             title="Encrypted at rest"
-            text="Sealed with AES-256-GCM in Upstash. 30-day TTL."
+            text="Stored encrypted (AES-256-GCM) with a 30-day TTL. Redacted from every log."
           />
           <Hint
             icon={<Info className="h-3.5 w-3.5" />}
             title="Wipe anytime"
-            text="Reply FORGET ME on WhatsApp or disconnect Swiggy MCP in Claude Desktop."
+            text="Email privacy@lastbite.fun and we'll delete your token + history within 24h. Or just disconnect Swiggy MCP in Claude Desktop — the token rotates."
           />
         </ul>
 
