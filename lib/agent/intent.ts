@@ -47,13 +47,13 @@ export const Intent = z.object({
 });
 export type Intent = z.infer<typeof Intent>;
 
-// AI SDK 6 defaults to json_schema response_format, which most Groq models
-// (including llama-3.1-8b-instant and llama-3.3-70b-versatile) reject as of
-// 2026-05. Pass providerOptions.groq.structuredOutputs=false to fall back to
-// json_object mode — universally supported, Zod still validates client-side.
-const INTENT_MODEL = process.env.LASTBITE_INTENT_MODEL ?? "llama-3.1-8b-instant";
+// AI SDK 6 defaults to json_schema response_format. Most Groq Llama models
+// (3.1-8b-instant, 3.3-70b-versatile) reject this — only the openai/gpt-oss-*
+// models support it cleanly as of 2026-05. Use 20b (free tier, fast, ~700ms).
+const INTENT_MODEL = process.env.LASTBITE_INTENT_MODEL ?? "openai/gpt-oss-20b";
 
-const SYSTEM = `Extract structured order intent from the user's message.
+const SYSTEM = `Extract structured order intent from the user's message and
+return it as a JSON object matching the supplied schema.
 
 The user is ordering food on Swiggy. Their message may be in English or
 Hinglish. Currency is INR (₹).
@@ -89,7 +89,7 @@ export async function parseIntent(text: string): Promise<Intent> {
     system: SYSTEM,
     prompt: text,
     providerOptions: {
-      groq: { structuredOutputs: false },
+      groq: { structuredOutputs: true, strictJsonSchema: false },
     },
     abortSignal: AbortSignal.timeout(15_000),
     maxRetries: 0,
