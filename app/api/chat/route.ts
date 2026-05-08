@@ -3,7 +3,7 @@ import { z } from "zod";
 import { readSessionCookie } from "@/lib/session";
 import { processTurn, UserBusyError } from "@/lib/agent/runner";
 import { SwiggyClient } from "@/lib/mcp/swiggy-client";
-import { getByocToken } from "@/lib/byoc";
+import { clearByocToken, getByocToken } from "@/lib/byoc";
 import { newRequestId, withLogContext, logContext } from "@/lib/log-context";
 import { safeLog } from "@/lib/redact";
 
@@ -69,6 +69,19 @@ async function handle(req: Request) {
         { status: 429 },
       );
     }
+    if (looksLikeAuthFailure(err)) {
+      // Swiggy upstream rejected our token — likely revoked or 24h expiry.
+      // Wipe it so the next /connect submission is clean.
+      await clearByocToken(session.phone).catch(() => {});
+      safeLog("chat.token-expired", { userId: session.phone });
+      return NextResponse.json(
+        {
+          error: "Your Swiggy MCP token expired. Please paste a fresh one from Claude Desktop.",
+          needsConnect: true,
+        },
+        { status: 401 },
+      );
+    }
     safeLog("chat.error", { message: (err as Error).message });
     return NextResponse.json(
       { error: "Something broke on my end. Try again.", reply: null },
@@ -77,4 +90,23 @@ async function handle(req: Request) {
   } finally {
     await swiggy.close();
   }
+}
+
+/**
+ * Pattern-match Swiggy MCP / @ai-sdk/mcp errors that indicate the user's
+ * bearer token is no longer accepted upstream. Conservative: requires
+ * either an explicit 401/403, or one of a small set of phrases that
+ * Swiggy's API uses for token-rejected responses.
+ */
+function looksLikeAuthFailure(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  if (msg.includes("401") || msg.includes("403")) return true;
+  return (
+    msg.includes("unauthorized") ||
+    msg.includes("forbidden") ||
+    msg.includes("invalid token") ||
+    msg.includes("token expired") ||
+    msg.includes("authentication required")
+  );
 }

@@ -52,20 +52,31 @@ const INTENT_MODEL = process.env.LASTBITE_INTENT_MODEL ?? "llama-3.1-8b-instant"
 const SYSTEM = `Extract structured order intent from the user's message.
 
 The user is ordering food on Swiggy. Their message may be in English or
-Hinglish. Extract every constraint they specify exactly — do NOT invent
-values. Currency is INR (₹).
+Hinglish. Currency is INR (₹).
 
-If the user implies a constraint without giving a number, use these
-defaults: 'best rated' or 'top rated' → ratingMin 4.0; 'highly rated' →
-4.2; 'nearby' (no distance given) → distanceMaxKm 3.
+CORE RULE — NEVER FABRICATE. If the user did not say it, the field is
+null. Don't guess a budget because biryani is "usually around ₹400".
+Don't infer cuisine from the dish name. Don't fill restaurantHint
+unless the user named a specific restaurant. The downstream agent
+relies on null vs value to decide whether to apply a filter — wrong
+guesses produce empty result sets.
+
+The 'dish' field should reflect what the user actually typed —
+preserve their phrasing where possible (e.g. 'chicken biryani' not
+just 'biryani' if they specified chicken). Don't translate, don't
+rewrite into a brand name.
+
+If the user implies a constraint without a number, use these defaults
+and only these defaults: 'best rated' or 'top rated' → ratingMin 4.0;
+'highly rated' → 4.2; 'nearby' (no distance given) → distanceMaxKm 3.
 
 For addressTag: only fill it when the user says 'at <name>' / 'near
 <name>' / 'from <name> address' / 'MyHome' / 'Work' / 'Gym' etc.
 Restaurant names go in restaurantHint, not addressTag.
 
-If the user names a restaurant explicitly (e.g. 'from Paradise'), put it
-in restaurantHint and leave cuisine null unless the user also said the
-cuisine independently.`;
+If the user names a restaurant explicitly (e.g. 'from Paradise'), put
+it in restaurantHint and leave cuisine null unless the user also said
+the cuisine independently.`;
 
 export async function parseIntent(text: string): Promise<Intent> {
   const result = await generateObject({
