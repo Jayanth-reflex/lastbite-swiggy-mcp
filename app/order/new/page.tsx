@@ -11,6 +11,7 @@ import {
   Command as CommandIcon,
   Bot,
 } from "lucide-react";
+import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,6 +39,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { bubbleFrom, bubbleTo, fadeUpAt, fadeUpFrom, spring } from "@/lib/motion";
+import { useStreamedText } from "@/hooks/use-streamed-text";
 
 interface Message {
   role: "user" | "bot" | "system";
@@ -68,10 +71,33 @@ const SUGGESTIONS_LIVE = [
   "veg pizza near Work, top rated within 5km",
 ];
 
-const EXAMPLE_HINT =
-  "Try: \"chocolate ice cream within 7km of my MyHome address, best rated, under ₹300\". " +
-  "I understand budgets, distance limits, ratings, named addresses (MyHome / Work / Gym), " +
-  "veg-only filters, and quantities.";
+function timeAwareGreeting(): { greeting: string; nudge: string } {
+  const h = new Date().getHours();
+  if (h < 5)
+    return {
+      greeting: "Late night?",
+      nudge: "Comfort food only — let's keep it simple.",
+    };
+  if (h < 11)
+    return {
+      greeting: "Good morning.",
+      nudge: "Breakfast in mind? Try a poha, a paratha, a flat white.",
+    };
+  if (h < 16)
+    return {
+      greeting: "Afternoon.",
+      nudge: "Lunch options? Tell me a dish, I'll find the best match.",
+    };
+  if (h < 19)
+    return {
+      greeting: "Snack o'clock.",
+      nudge: "Quick chai-time bites or save up for dinner — your call.",
+    };
+  return {
+    greeting: "Evening.",
+    nudge: "Dinner mode. Tell me what you're craving.",
+  };
+}
 
 export default function NewOrderPage() {
   const router = useRouter();
@@ -82,6 +108,7 @@ export default function NewOrderPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [liveDialogOpen, setLiveDialogOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [greeting] = useState(timeAwareGreeting);
 
   // Auth + intro on mount.
   useEffect(() => {
@@ -93,18 +120,15 @@ export default function NewOrderPage() {
       }
       const data = (await res.json()) as Me;
       setMe(data);
-      const isDemo = data.effectiveMode === "demo";
       setMessages([
         {
           role: "bot",
           ts: Date.now(),
-          text: isDemo
-            ? `Hi! ${EXAMPLE_HINT} I'll walk you through three confirmation gates. We're in demo mode, so no real Swiggy order will be placed — perfect for trying things out.`
-            : `Hi! ${EXAMPLE_HINT} I'll walk you through three confirmation gates and a 30-second grace timer before any real order goes through.`,
+          text: greeting.nudge,
         },
       ]);
     })();
-  }, [router]);
+  }, [router, greeting.nudge]);
 
   // Cmd/Ctrl-K opens the example palette.
   useEffect(() => {
@@ -230,11 +254,33 @@ export default function NewOrderPage() {
         ref={scrollRef}
         className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-6 py-8"
       >
+        {messages.length <= 1 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={spring.gentle}
+            className="mb-6 flex flex-col gap-1"
+          >
+            <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              {greeting.greeting}
+            </span>
+            <h1 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
+              What are you in the mood for?
+            </h1>
+          </motion.div>
+        )}
+
         <div className="flex flex-col gap-3">
-          {messages.map((m, i) => (
-            <Bubble key={`${m.ts}-${i}`} message={m} />
-          ))}
-          {pending && <PendingBubble />}
+          <AnimatePresence initial={false}>
+            {messages.map((m, i) => (
+              <Bubble
+                key={`${m.ts}-${i}`}
+                message={m}
+                stream={m.role === "bot" && i === messages.length - 1}
+              />
+            ))}
+            {pending && <PendingBubble key="pending" />}
+          </AnimatePresence>
         </div>
 
         {messages.length <= 1 && (
@@ -289,6 +335,8 @@ function ChatSkeleton() {
         </div>
       </div>
       <section className="mx-auto w-full max-w-3xl flex-1 px-6 py-8">
+        <Skeleton className="mb-3 h-3 w-24" />
+        <Skeleton className="mb-6 h-6 w-3/5" />
         <Skeleton className="h-20 w-3/4 rounded-2xl" />
       </section>
     </main>
@@ -309,30 +357,39 @@ function ModeBanner({
   return (
     <div className="border-b border-border/60 bg-card/40 backdrop-blur">
       <div className="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 py-2.5">
-        <span className="inline-flex items-center gap-2 text-xs">
-          {isDemo ? (
-            <>
-              <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-soft text-brand-muted">
-                <Sparkles className="h-3 w-3" />
-              </span>
-              <span className="text-muted-foreground">
-                <strong className="font-medium text-foreground">Demo mode</strong> — confirmations
-                run end-to-end, no real order placed.
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/15 text-rose-500 dark:bg-rose-500/20 dark:text-rose-300">
-                <Zap className="h-3 w-3" />
-                <span className="absolute -inset-0.5 animate-ping rounded-full bg-rose-500/20" />
-              </span>
-              <span className="text-muted-foreground">
-                <strong className="font-medium text-foreground">Live mode</strong> — final YES
-                places a real Swiggy COD order.
-              </span>
-            </>
-          )}
-        </span>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={isDemo ? "demo" : "live"}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 4 }}
+            transition={spring.snappy}
+            className="inline-flex items-center gap-2 text-xs"
+          >
+            {isDemo ? (
+              <>
+                <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-brand-soft text-brand-muted">
+                  <Sparkles className="h-3 w-3" />
+                </span>
+                <span className="text-muted-foreground">
+                  <strong className="font-medium text-foreground">Demo mode</strong> — confirmations
+                  run end-to-end, no real order placed.
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/15 text-rose-500 dark:bg-rose-500/20 dark:text-rose-300">
+                  <Zap className="h-3 w-3" />
+                  <span className="absolute -inset-0.5 animate-ping rounded-full bg-rose-500/20" />
+                </span>
+                <span className="text-muted-foreground">
+                  <strong className="font-medium text-foreground">Live mode</strong> — final YES
+                  places a real Swiggy COD order.
+                </span>
+              </>
+            )}
+          </motion.span>
+        </AnimatePresence>
         <ModeToggle mode={mode} available={available} onFlip={onFlip} />
       </div>
     </div>
@@ -349,46 +406,71 @@ function ModeToggle({
   onFlip: (target: OrderMode) => void;
 }) {
   return (
-    <div className="ml-auto inline-flex items-center rounded-full bg-secondary p-0.5 text-[11px] font-medium ring-1 ring-foreground/[0.04]">
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => onFlip("demo")}
-            className={
-              mode === "demo"
-                ? "rounded-full bg-card px-2.5 py-1 text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
-                : "rounded-full px-2.5 py-1 text-muted-foreground transition-colors hover:text-foreground"
-            }
-          >
-            Demo
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Safe mode — no real orders</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={() => onFlip("live")}
-            className={
-              mode === "live"
-                ? "rounded-full bg-rose-600 px-2.5 py-1 text-white shadow-sm"
-                : `rounded-full px-2.5 py-1 transition-colors ${
-                    available
-                      ? "text-muted-foreground hover:text-foreground"
-                      : "cursor-not-allowed text-muted-foreground/40"
-                  }`
-            }
-          >
-            Live
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>
-          {available ? "Real Swiggy COD orders" : "Disabled by host"}
-        </TooltipContent>
-      </Tooltip>
-    </div>
+    <LayoutGroup id="mode-toggle">
+      <div className="ml-auto inline-flex items-center rounded-full bg-secondary p-0.5 text-[11px] font-medium ring-1 ring-foreground/[0.04]">
+        <ToggleButton
+          active={mode === "demo"}
+          activeClass="bg-card text-foreground shadow-sm ring-1 ring-foreground/[0.06]"
+          tooltip="Safe mode — no real orders"
+          onClick={() => onFlip("demo")}
+        >
+          Demo
+        </ToggleButton>
+        <ToggleButton
+          active={mode === "live"}
+          activeClass="bg-rose-600 text-white shadow-sm"
+          tooltip={available ? "Real Swiggy COD orders" : "Disabled by host"}
+          disabled={!available && mode !== "live"}
+          onClick={() => onFlip("live")}
+        >
+          Live
+        </ToggleButton>
+      </div>
+    </LayoutGroup>
+  );
+}
+
+function ToggleButton({
+  active,
+  activeClass,
+  tooltip,
+  disabled = false,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  activeClass: string;
+  tooltip: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={onClick}
+          className={`relative rounded-full px-2.5 py-1 transition-colors ${
+            active
+              ? "text-current"
+              : disabled
+                ? "cursor-not-allowed text-muted-foreground/40"
+                : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          {active && (
+            <motion.span
+              layoutId="mode-toggle-active"
+              transition={spring.snappy}
+              className={`absolute inset-0 rounded-full ${activeClass}`}
+            />
+          )}
+          <span className="relative">{children}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -406,42 +488,58 @@ function EmptyHints({
   const isMac =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
   return (
-    <div className="mt-8 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
+    <motion.div
+      initial={fadeUpFrom}
+      animate={fadeUpAt(0.1)}
+      className="mt-8 flex flex-col gap-4"
+    >
+      <motion.div
+        initial={fadeUpFrom}
+        animate={fadeUpAt(0.15)}
+        className="flex items-center justify-between"
+      >
         <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
           Try an example
         </span>
         <button
           type="button"
           onClick={onOpenPalette}
-          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+          className="inline-flex items-center gap-1.5 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <CommandIcon className="h-3 w-3" />
-          <span>{isMac ? "⌘K" : "Ctrl+K"}</span>
+          <span className="tabular-nums">{isMac ? "⌘K" : "Ctrl+K"}</span>
         </button>
-      </div>
+      </motion.div>
       <div className="grid gap-2 sm:grid-cols-2">
-        {items.map((s) => (
-          <button
+        {items.map((s, i) => (
+          <motion.button
             key={s}
+            initial={fadeUpFrom}
+            animate={fadeUpAt(0.2 + i * 0.05)}
+            whileHover={{ y: -2 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => onPick(s)}
             disabled={pending}
-            className="group flex items-start gap-2 rounded-xl border border-border/60 bg-card p-3 text-left text-sm text-muted-foreground transition-all hover:-translate-y-px hover:border-foreground/20 hover:text-foreground hover:shadow-sm disabled:opacity-50"
+            className="group flex items-start gap-2 rounded-xl border border-border/60 bg-card p-3 text-left text-sm text-muted-foreground transition-colors hover:border-foreground/20 hover:text-foreground hover:shadow-sm disabled:opacity-50"
           >
             <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand opacity-70 transition-opacity group-hover:opacity-100" />
             <span className="leading-relaxed">{s}</span>
-          </button>
+          </motion.button>
         ))}
       </div>
-      <p className="text-xs leading-relaxed text-muted-foreground">
+      <motion.p
+        initial={fadeUpFrom}
+        animate={fadeUpAt(0.5)}
+        className="text-xs leading-relaxed text-muted-foreground"
+      >
         I understand <strong className="text-foreground">budgets</strong> (₹300, under ₹500),{" "}
         <strong className="text-foreground">distance</strong> (within 5km),{" "}
         <strong className="text-foreground">rating</strong> (best rated),{" "}
         <strong className="text-foreground">saved addresses</strong> (MyHome / Work / Gym),{" "}
         <strong className="text-foreground">veg / non-veg</strong>, and{" "}
         <strong className="text-foreground">quantities</strong> (2 plates).
-      </p>
-    </div>
+      </motion.p>
+    </motion.div>
   );
 }
 
@@ -470,15 +568,20 @@ function Composer({
             e.preventDefault();
             onSend();
           }}
-          className="flex items-center gap-2 rounded-full border border-input bg-card px-2 py-1.5 transition-colors focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30"
+          className={`relative flex items-center gap-2 overflow-hidden rounded-full border border-input bg-card px-2 py-1.5 transition-all duration-200 focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/30 ${
+            pending ? "border-brand/40" : ""
+          }`}
         >
+          {pending && (
+            <span aria-hidden className="pointer-events-none absolute inset-0 shimmer" />
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
                 type="button"
                 onClick={onOpenPalette}
                 aria-label="Open command palette"
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
                 <CommandIcon className="h-3.5 w-3.5" />
               </button>
@@ -493,19 +596,25 @@ function Composer({
             value={input}
             onChange={(e) => setInput(e.target.value)}
             disabled={pending}
-            className="h-9 flex-1 rounded-none border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0"
+            className="relative h-9 flex-1 rounded-none border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0"
           />
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button
-                type="submit"
-                size="icon-sm"
-                disabled={pending || !input.trim()}
-                aria-label="Send"
-                className="rounded-full"
+              <motion.div
+                whileTap={{ scale: 0.92 }}
+                transition={spring.snappy}
+                className="relative"
               >
-                <ArrowUp className="h-3.5 w-3.5" />
-              </Button>
+                <Button
+                  type="submit"
+                  size="icon-sm"
+                  disabled={pending || !input.trim()}
+                  aria-label="Send"
+                  className="rounded-full"
+                >
+                  <ArrowUp className="h-3.5 w-3.5" />
+                </Button>
+              </motion.div>
             </TooltipTrigger>
             <TooltipContent>Send (Return)</TooltipContent>
           </Tooltip>
@@ -518,7 +627,7 @@ function Composer({
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-50" />
                   <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
                 </span>
-                Connected as {maskPhone(phone)}
+                Connected as <span className="tabular-nums">{maskPhone(phone)}</span>
               </span>
             </TooltipTrigger>
             <TooltipContent>Session active · token sealed in Upstash</TooltipContent>
@@ -617,7 +726,13 @@ function LiveModeDialog({
 
 function PendingBubble() {
   return (
-    <div className="flex items-end gap-2 self-start">
+    <motion.div
+      layout
+      initial={bubbleFrom}
+      animate={bubbleTo}
+      exit={{ opacity: 0, y: -4, transition: { duration: 0.15 } }}
+      className="flex items-end gap-2 self-start"
+    >
       <BotAvatar />
       <div className="rounded-2xl rounded-bl-md bg-secondary px-4 py-2.5 text-sm text-muted-foreground">
         <span className="inline-flex items-center gap-1.5">
@@ -626,31 +741,57 @@ function PendingBubble() {
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-foreground/60 [animation-delay:240ms]" />
         </span>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
-function Bubble({ message }: { message: Message }) {
+function Bubble({ message, stream }: { message: Message; stream?: boolean }) {
   if (message.role === "system") {
     return (
-      <div className="my-2 inline-flex items-center gap-1.5 self-center rounded-full border border-border/60 bg-secondary/60 px-3 py-1 text-[11px] text-muted-foreground animate-bubble-in">
+      <motion.div
+        layout
+        initial={bubbleFrom}
+        animate={bubbleTo}
+        className="my-2 inline-flex items-center gap-1.5 self-center rounded-full border border-border/60 bg-secondary/60 px-3 py-1 text-[11px] text-muted-foreground"
+      >
         <AlertCircle className="h-3 w-3" /> {message.text}
-      </div>
+      </motion.div>
     );
   }
   if (message.role === "user") {
     return (
-      <div className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-foreground px-4 py-2.5 text-sm leading-relaxed text-background animate-bubble-in">
+      <motion.div
+        layout
+        initial={bubbleFrom}
+        animate={bubbleTo}
+        className="max-w-[80%] self-end rounded-2xl rounded-br-md bg-foreground px-4 py-2.5 text-sm leading-relaxed text-background"
+      >
         {message.text}
-      </div>
+      </motion.div>
     );
   }
   return (
-    <div className="flex max-w-[85%] items-end gap-2 self-start animate-bubble-in">
+    <motion.div
+      layout
+      initial={bubbleFrom}
+      animate={bubbleTo}
+      className="flex max-w-[85%] items-end gap-2 self-start"
+    >
       <BotAvatar />
-      <div className="whitespace-pre-line rounded-2xl rounded-bl-md bg-secondary px-4 py-2.5 text-sm leading-relaxed text-foreground">
-        {message.text}
-      </div>
+      <BotMessage text={message.text} stream={stream} />
+    </motion.div>
+  );
+}
+
+function BotMessage({ text, stream }: { text: string; stream?: boolean }) {
+  const { display, done } = useStreamedText(text, 16, !!stream);
+  return (
+    <div
+      className={`whitespace-pre-line rounded-2xl rounded-bl-md bg-secondary px-4 py-2.5 text-sm leading-relaxed text-foreground ${
+        stream && !done ? "caret" : ""
+      }`}
+    >
+      {display}
     </div>
   );
 }
