@@ -384,11 +384,20 @@ export function makeLastBiteGraph(swiggy: SwiggyClient) {
     try {
       intent = await parseIntent(state.query);
     } catch (err) {
-      safeLog("agent.searcher.intent-failed", { message: (err as Error).message });
+      const e = err as Error & { cause?: unknown; code?: string; status?: number };
+      safeLog("agent.searcher.intent-failed", {
+        name: e.name,
+        message: e.message,
+        code: e.code,
+        status: e.status,
+        causeMessage: (e.cause as Error | undefined)?.message,
+        groqKeySet: Boolean(process.env.GROQ_API_KEY) && process.env.GROQ_API_KEY!.length > 0,
+        intentModel: process.env.LASTBITE_INTENT_MODEL ?? "llama-3.1-8b-instant",
+      });
       return {
         status: "failed" as RunStatus,
         failureReason:
-          "Couldn't understand that order. Try: 'chocolate ice cream within 5km of MyHome under ₹300'.",
+          `Intent parser error: ${e.message?.slice(0, 200) ?? "unknown"}. (Diagnostic mode — will revert.)`,
       };
     }
     safeLog("agent.searcher.intent", intent);
