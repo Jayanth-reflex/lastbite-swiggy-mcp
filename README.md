@@ -7,7 +7,20 @@ A web agent that takes natural-language Swiggy orders, walks them through a thre
 **Live:** [swiggy-mcp.vercel.app](https://swiggy-mcp.vercel.app)
 **Whitelist request:** [Swiggy/swiggy-mcp-server-manifest#53](https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53)
 
+> **Honest beta caveat.** Until Swiggy whitelists our OAuth callback (issue #53), signing in requires Claude Desktop with Swiggy MCP configured — you authorize Swiggy there once and paste the resulting bearer token into `/connect`. Realistic time budget: 10–15 minutes if you're comfortable editing a JSON config file. Setup is documented end-to-end on the Connect page.
+
 ![Last Bite hero](https://swiggy-mcp.vercel.app/opengraph-image)
+
+## Docs
+
+- [`CHANGELOG.md`](./CHANGELOG.md) — chronological release notes with commit references
+- [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) — request flow, agent supervisor, Redis keys, Postgres checkpointer
+- [`docs/SAFETY.md`](./docs/SAFETY.md) — the explicit safety contract (kill switches, gates, mutex, idempotency, webhook policy)
+- [`docs/RUNBOOK.md`](./docs/RUNBOOK.md) — incident scenarios + log signature catalog
+- [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) — env vars, deploy flow, post-deploy verification
+- [`docs/AUDIT_2026-05.md`](./docs/AUDIT_2026-05.md) — May 2026 PR-review audit findings + remediations
+- [`docs/BUILDERS_CLUB_SUBMISSION.md`](./docs/BUILDERS_CLUB_SUBMISSION.md) — packet for `builders@swiggy.in`
+- [`docs/DEMO_VIDEO_SCRIPT.md`](./docs/DEMO_VIDEO_SCRIPT.md) — 90-second shot list + voiceover
 
 ---
 
