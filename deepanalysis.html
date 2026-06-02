@@ -1,0 +1,683 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Last Bite — Deep Analysis</title>
+<style>
+  :root{
+    --bg:#0c0e12; --bg2:#11141b; --panel:#151923; --panel2:#1b202c;
+    --line:#262d3a; --line2:#323b4d;
+    --ink:#e7ecf3; --ink2:#aeb7c6; --ink3:#7c8699;
+    --amber:#ff9f43; --amber2:#ffb56b; --gold:#ffd479;
+    --green:#3ecf8e; --red:#ff5d6c; --blue:#5aa9ff; --violet:#b08bff;
+    --mono:"SF Mono",SFMono-Regular,ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(255,159,67,.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(90,169,255,.06), transparent 55%),
+    var(--bg);
+    color:var(--ink);font-family:var(--sans);line-height:1.62;font-size:15.5px;
+    -webkit-font-smoothing:antialiased}
+  a{color:var(--amber2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,kbd{font-family:var(--mono);font-size:.86em}
+  .wrap{display:grid;grid-template-columns:262px minmax(0,1fr);gap:0;max-width:1280px;margin:0 auto}
+
+  /* top bar */
+  header.top{grid-column:1/-1;position:sticky;top:0;z-index:30;
+    background:rgba(12,14,18,.82);backdrop-filter:blur(12px);
+    border-bottom:1px solid var(--line);padding:14px 28px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header.top .brand{font-weight:700;letter-spacing:.2px;font-size:16px}
+  header.top .brand .dot{color:var(--amber)}
+  header.top .sub{color:var(--ink3);font-size:12.5px}
+  header.top .spacer{flex:1}
+  .verdict{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,#23170a,#1a1206);
+    border:1px solid #5a3b16;color:var(--gold);padding:6px 12px;border-radius:999px;font-size:12.5px;font-weight:600}
+  .verdict b{color:#fff}
+
+  /* sidebar */
+  nav.toc{position:sticky;top:57px;align-self:start;height:calc(100vh - 57px);overflow:auto;
+    padding:22px 14px 60px 24px;border-right:1px solid var(--line);font-size:13.2px}
+  nav.toc h4{margin:18px 0 8px;color:var(--ink3);text-transform:uppercase;letter-spacing:.12em;font-size:10.5px;font-weight:700}
+  nav.toc a{display:block;color:var(--ink2);padding:4px 10px;border-radius:7px;border-left:2px solid transparent}
+  nav.toc a:hover{background:var(--panel);color:var(--ink);text-decoration:none}
+  nav.toc a.mut{color:var(--ink3)}
+
+  main{padding:36px 40px 120px;min-width:0}
+  section{margin:0 0 46px;scroll-margin-top:74px}
+  h1{font-size:30px;margin:.2em 0 .35em;letter-spacing:-.4px}
+  h2{font-size:21px;margin:1.4em 0 .5em;padding-bottom:8px;border-bottom:1px solid var(--line);letter-spacing:-.2px}
+  h2 .num{color:var(--amber);font-family:var(--mono);font-size:15px;margin-right:10px}
+  h3{font-size:16px;margin:1.4em 0 .4em;color:var(--ink)}
+  p{margin:.6em 0;color:var(--ink2)}
+  strong{color:var(--ink)}
+  ul,ol{margin:.5em 0 .9em;padding-left:22px}
+  li{margin:.32em 0;color:var(--ink2)}
+  .lead{font-size:16.5px;color:var(--ink2)}
+  .muted{color:var(--ink3)}
+  hr{border:0;border-top:1px solid var(--line);margin:34px 0}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:6px;
+    border:1px solid var(--line2);color:var(--ink2);background:var(--panel);white-space:nowrap}
+  .path{font-family:var(--mono);font-size:12.4px;color:var(--amber2);background:#1a130a;
+    border:1px solid #3a2a14;padding:1px 6px;border-radius:5px}
+
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:1080px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(2,1fr)}}
+
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);
+    border-radius:14px;padding:18px 18px}
+  .card h3{margin:.1em 0 .35em}
+  .stat{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);
+    border-radius:14px;padding:16px 16px;text-align:left}
+  .stat .v{font-size:27px;font-weight:750;color:#fff;letter-spacing:-.5px;font-family:var(--mono)}
+  .stat .v small{font-size:14px;color:var(--ink3);font-weight:600}
+  .stat .l{font-size:12.5px;color:var(--ink3);margin-top:2px}
+  .stat .v.amber{color:var(--amber)} .stat .v.green{color:var(--green)} .stat .v.blue{color:var(--blue)}
+
+  table{width:100%;border-collapse:collapse;margin:.6em 0 1em;font-size:13.6px;display:block;overflow-x:auto}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--ink3);font-weight:650;font-size:11.5px;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap}
+  td{color:var(--ink2)} td strong{color:var(--ink)}
+  tbody tr:hover{background:var(--panel)}
+
+  pre{background:#0a0c10;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow:auto;
+    font-family:var(--mono);font-size:12.6px;line-height:1.55;color:#cdd6e4}
+  pre b{color:var(--gold);font-weight:600}
+  pre .dim{color:var(--ink3)}
+  pre .ok{color:var(--green)} pre .hot{color:var(--red)} pre .ar{color:var(--amber)}
+
+  .sev{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.04em}
+  .sev.med{background:#2a1d06;color:var(--gold);border:1px solid #5a3f12}
+  .sev.low{background:#0e1f17;color:var(--green);border:1px solid #1d4536}
+  .sev.info{background:#0e1726;color:var(--blue);border:1px solid #214066}
+  .sev.high{background:#2a0d11;color:var(--red);border:1px solid #5a1a22}
+
+  .finding{border:1px solid var(--line);border-radius:13px;padding:16px 18px;margin:14px 0;background:var(--panel)}
+  .finding .fh{display:flex;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+  .finding .fh .t{font-weight:650;color:#fff;font-size:15px}
+  .finding .meta{font-size:12px;color:var(--ink3);margin-top:8px}
+
+  .callout{border-left:3px solid var(--amber);background:linear-gradient(90deg,rgba(255,159,67,.07),transparent 80%);
+    padding:12px 16px;border-radius:0 10px 10px 0;margin:14px 0}
+  .callout.green{border-color:var(--green);background:linear-gradient(90deg,rgba(62,207,142,.07),transparent 80%)}
+  .callout.red{border-color:var(--red);background:linear-gradient(90deg,rgba(255,93,108,.07),transparent 80%)}
+  .callout.blue{border-color:var(--blue);background:linear-gradient(90deg,rgba(90,169,255,.07),transparent 80%)}
+  .callout p{margin:.25em 0}
+
+  .tag{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--ink2);
+    border:1px solid var(--line2);border-radius:6px;padding:2px 7px;margin:2px 3px 2px 0;background:var(--bg2)}
+  .check{color:var(--green);font-weight:700} .cross{color:var(--red);font-weight:700} .wip{color:var(--gold);font-weight:700}
+
+  .layer{display:flex;gap:14px;align-items:flex-start;padding:13px 0;border-bottom:1px dashed var(--line)}
+  .layer:last-child{border-bottom:0}
+  .layer .ln{font-family:var(--mono);font-size:12px;color:var(--amber);min-width:58px;font-weight:700;padding-top:2px}
+  .layer .lb{flex:1}
+  .layer .lb b{color:#fff}
+  .layer .lb .w{font-size:12.3px;color:var(--ink3);margin-top:2px}
+
+  footer{grid-column:1/-1;border-top:1px solid var(--line);padding:24px 40px 60px;color:var(--ink3);font-size:12.5px}
+  .kbd{font-family:var(--mono);font-size:11px;border:1px solid var(--line2);border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink2);background:var(--bg2)}
+  @media(max-width:880px){
+    .wrap{grid-template-columns:1fr} nav.toc{display:none} main{padding:24px 18px 90px}
+    .g2,.g3,.g4{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="brand">Last Bite <span class="dot">·</span> Deep Analysis</div>
+      <div class="sub">swiggy-mcp · Next.js 16 · LangGraph agent · BYOC Swiggy MCP</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="verdict">Verdict&nbsp; <b>Production-grade safety engineering on a developer-beta bridge</b></div>
+  </header>
+
+  <nav class="toc">
+    <h4>Report</h4>
+    <a href="#tldr">TL;DR</a>
+    <a href="#what">1 · What this actually is</a>
+    <a href="#stack">2 · Stack &amp; metrics</a>
+    <a href="#flow">3 · Request flow</a>
+    <a href="#agent">4 · The agent graph</a>
+    <a href="#safety">5 · The 7-layer safety model</a>
+    <a href="#data">6 · Data &amp; crypto</a>
+    <a href="#quality">7 · Code-quality signals</a>
+    <a href="#findings">8 · Findings &amp; risks</a>
+    <a href="#tests">9 · Tests &amp; verification</a>
+    <a href="#maturity">10 · Maturity signals</a>
+    <a href="#portfolio">11 · Portfolio framing</a>
+    <a href="#reco">12 · Recommendations</a>
+    <h4>Appendix</h4>
+    <a href="#map" class="mut">File map</a>
+    <a href="#method" class="mut">Method &amp; caveats</a>
+  </nav>
+
+  <main>
+
+  <!-- ============ TLDR ============ -->
+  <section id="tldr">
+    <h1>Last Bite — a regret-proof Swiggy ordering agent</h1>
+    <p class="lead">A single-tenant Next.js 16 web agent that takes a natural-language food order
+    (<em>“chocolate ice cream within 7km of MyHome, best rated, under ₹300”</em>), resolves it against
+    Swiggy’s official MCP server, and walks it through a multi-stage human-in-the-loop confirmation
+    before placing a <strong>COD-only, non-cancellable</strong> order. The entire reason the project exists is
+    one upstream fact: Swiggy MCP orders <em>cannot be undone</em> — so the product’s real surface area is
+    <strong>not the ordering, it’s the not-ordering-by-accident.</strong></p>
+
+    <div class="grid g4" style="margin:22px 0 6px">
+      <div class="stat"><div class="v amber">~3.3k</div><div class="l">lines of agent + lib + route TS</div></div>
+      <div class="stat"><div class="v">102</div><div class="l">tracked files (38 .ts / 35 .tsx)</div></div>
+      <div class="stat"><div class="v green">7</div><div class="l">independent money-safety layers</div></div>
+      <div class="stat"><div class="v blue">8</div><div class="l">offline regression scenarios</div></div>
+    </div>
+
+    <div class="callout green">
+      <p><strong>What stands out.</strong> This is not a weekend demo wearing a safety costume. It carries a
+      written safety contract (<span class="path">docs/SAFETY.md</span>), a self-audit that names 18 silent-failure
+      paths with commit references (<span class="path">docs/AUDIT_2026-05.md</span>), typed error taxonomies at every
+      I/O boundary, and a regression test that exists specifically because a real <strong>₹321</strong> order once
+      fired on a bug. The engineering maturity is well above the “portfolio project” baseline.</p>
+    </div>
+
+    <div class="callout">
+      <p><strong>The honest catch.</strong> It is a <em>developer beta</em>, not a consumer product. Swiggy’s MCP auth
+      server added a client whitelist (~2026-05-07) that rejects the app’s hosted redirect URI
+      (<a href="https://github.com/Swiggy/swiggy-mcp-server-manifest/issues/53">issue&nbsp;#53</a>), so every user must
+      run Claude Desktop, complete Swiggy OTP there, dig the bearer token out of Claude’s local data, and paste it into
+      <span class="path">/connect</span> (BYOC = “bring your own Claude”). Real orders are double-gated off by default.
+      And the headline “30-second countdown, type STOP to cancel” is fully wired only on the
+      <em>unprovisioned WhatsApp surface</em> — see <a href="#findings">finding F1</a>.</p>
+    </div>
+
+    <p class="muted">Below: an independent read of the architecture, the safety model verified against the actual code,
+    and a calibrated list of gaps — including a few that the project’s own May audit didn’t catch.</p>
+  </section>
+
+  <!-- ============ WHAT ============ -->
+  <section id="what">
+    <h2><span class="num">01</span>What this actually is</h2>
+    <p>The repository root <span class="path">CLAUDE.md</span> describes an ambitious <strong>five-project portfolio</strong>
+    on Swiggy MCP (Last Bite → Trail → ChaiCal → Bharat Pantry → Saans). The code on disk is <strong>Project 1 only</strong>.
+    Everything else is roadmap — and the docs are refreshingly explicit about that
+    (<span class="path">docs/ARCHITECTURE.md</span> §“Things this doc deliberately omits”).</p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>What is built &amp; shipped</h3>
+        <ul style="margin-bottom:0">
+          <li><span class="check">✓</span> Web chat at <span class="path">/order/new</span> (demo + live modes)</li>
+          <li><span class="check">✓</span> BYOC token-paste onboarding at <span class="path">/connect</span> with Redis-encrypted storage</li>
+          <li><span class="check">✓</span> LangGraph supervisor: Searcher → Recommender → Confirmer → Placer</li>
+          <li><span class="check">✓</span> Three confirmation gates + 30s grace + idempotency + per-user mutex</li>
+          <li><span class="check">✓</span> AI intent extraction + deterministic filtering + near-miss recommendations</li>
+          <li><span class="check">✓</span> Expired-token self-heal (Swiggy 401 → wipe → re-connect)</li>
+          <li><span class="check">✓</span> DPDP-aligned <span class="path">/privacy</span>, redaction middleware, request-id correlation</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Wired but not live / roadmap</h3>
+        <ul style="margin-bottom:0">
+          <li><span class="wip">◐</span> WhatsApp inbound (<span class="path">/api/whatsapp</span>) — fully coded, Gupshup not provisioned in prod</li>
+          <li><span class="wip">◐</span> Native OAuth + PKCE + RFC 7591 DCR — works, but parked behind Swiggy’s whitelist (issue #53)</li>
+          <li><span class="cross">✗</span> Trail, ChaiCal, Bharat Pantry, Saans — not in this repo</li>
+          <li><span class="cross">✗</span> Live order tracking UI (depends on Project 2)</li>
+        </ul>
+        <p class="meta" style="color:var(--ink3);font-size:12px;margin-top:10px">The OAuth machinery is kept intact so re-enabling native sign-in is “a one-line UI swap” the day the whitelist clears.</p>
+      </div>
+    </div>
+
+    <div class="callout blue">
+      <p><strong>Design center of gravity.</strong> The interesting code is concentrated in three places:
+      the <strong>agent graph</strong> (<span class="path">lib/agent/graph.ts</span>, 790 lines — the single biggest file),
+      the <strong>BYOC token bridge</strong> (<span class="path">lib/byoc.ts</span> + <span class="path">lib/crypto.ts</span> + <span class="path">lib/session.ts</span>),
+      and the <strong>safety primitives</strong> (<span class="path">lib/redis.ts</span> + <span class="path">lib/user-prefs.ts</span>).
+      Everything else is conventional shadcn-on-Next.js.</p>
+    </div>
+  </section>
+
+  <!-- ============ STACK ============ -->
+  <section id="stack">
+    <h2><span class="num">02</span>Stack &amp; metrics</h2>
+    <div class="grid g2">
+      <div>
+        <table>
+          <thead><tr><th>Layer</th><th>Choice (as built)</th></tr></thead>
+          <tbody>
+            <tr><td>Framework</td><td><strong>Next.js 16.2.5</strong> App Router, React 19.2, TS 5</td></tr>
+            <tr><td>UI</td><td>Tailwind v4 + shadcn/ui (19 primitives) + Motion v12</td></tr>
+            <tr><td>Agent</td><td><strong>LangGraph 1.3</strong> StateGraph + <code>interrupt()</code></td></tr>
+            <tr><td>MCP client</td><td><code>@ai-sdk/mcp</code> over HTTP, Bearer auth</td></tr>
+            <tr><td>Intent LLM</td><td>Groq <code>openai/gpt-oss-20b</code> <span class="muted">(free, ~700ms)</span></td></tr>
+            <tr><td>Persona LLM</td><td>Anthropic <code>claude-haiku-4-5</code> <span class="muted">(gates only)</span></td></tr>
+            <tr><td>Redis</td><td>Upstash — tokens, idempotency, locks, mode, dedup</td></tr>
+            <tr><td>Postgres</td><td>Neon — LangGraph <code>PostgresSaver</code> checkpoints</td></tr>
+            <tr><td>Hosting</td><td>Vercel, region <code>bom1</code>, daily cron</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <table>
+          <thead><tr><th>Surface</th><th>Count</th></tr></thead>
+          <tbody>
+            <tr><td>API routes</td><td>11 (<code>chat</code>, <code>whatsapp</code>, <code>oauth/*</code>, <code>me/*</code>, <code>admin/*</code>, <code>cron</code>)</td></tr>
+            <tr><td>Agent nodes</td><td>4 (Searcher, Recommender, Confirmer, Placer)</td></tr>
+            <tr><td>Pages</td><td>landing, connect, success, order/new, order/[id], privacy</td></tr>
+            <tr><td>Docs</td><td>8 (~1,193 lines) + a 24KB <code>CLAUDE.md</code></td></tr>
+            <tr><td>Redis key families</td><td>7 (<code>byoc:</code> <code>mode:</code> <code>lock:user:</code> <code>last:</code> <code>idem:</code> <code>grace:</code> <code>msg:</code>)</td></tr>
+            <tr><td>MCP tools captured</td><td>11 (fixtures in <span class="path">fixtures/swiggy/food/</span>)</td></tr>
+            <tr><td>Smoke scenarios</td><td>8 (offline, no network, no LLM)</td></tr>
+            <tr><td>Audited silent failures</td><td>18 (4 critical + 14 high/med)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <p class="muted">Notable stack discipline: the <em>only</em> LLM call in the ordering path is intent parsing. Filtering,
+    sorting, address resolution, cart parsing and the entire safety machine are deterministic TypeScript — not an agentic
+    tool loop. This is the right call for a system that spends real money.</p>
+  </section>
+
+  <!-- ============ FLOW ============ -->
+  <section id="flow">
+    <h2><span class="num">03</span>Request flow</h2>
+    <p>One chat message = one agent turn. The route reads the session cookie, fetches the user’s decrypted BYOC token,
+    constructs a per-user <code>SwiggyClient</code>, and drives exactly one turn through the graph under a per-user lock.</p>
+<pre><span class="dim">browser /order/new</span>
+   │  POST /api/chat  { text }
+   ▼
+<b>app/api/chat/route.ts</b>  <span class="dim">— readSessionCookie → getByocToken(phone) → new SwiggyClient</span>
+   │
+   ▼
+<b>processTurn()</b> <span class="dim">lib/agent/runner.ts</span>
+   │  <span class="ar">acquireUserLock(phone, 180s)</span>  ← per-user mutex (else UserBusyError → 429)
+   │  abandoned-thread guard (&gt;30min stale gate → force STOP, fresh start)
+   │  resume paused interrupt  OR  init fresh state
+   ▼
+<b>LangGraph supervisor</b> <span class="dim">lib/agent/graph.ts</span>
+   │   ├─ Searcher     parseIntent(Groq) → get_addresses → search_restaurants
+   │   │               → applyHardFilters → top-3 menus → buildCartAt
+   │   ├─ Recommender  no exact match → annotated near-misses, user picks #
+   │   ├─ Confirmer    gate 1 calorie · gate 2 ETA   (interrupt() each)
+   │   └─ Placer       gate 3 final → grace 30s → idempotency → effectiveMode
+   ▼
+<b>Swiggy MCP</b>  <span class="dim">mcp.swiggy.com/food</span>  <span class="ok">place_food_order (live)</span> / <span class="ar">demo_xxxx (default)</span>
+   ▲
+   └── reply { reply, status, orderId, paused }  → streamed bubble in the UI</pre>
+    <p class="muted">Mirror path: <span class="path">app/api/whatsapp/route.ts</span> drives the same <code>processTurn()</code>
+    from Gupshup inbound — with one critical difference in how it handles the grace window (see <a href="#findings">F1</a>).</p>
+  </section>
+
+  <!-- ============ AGENT ============ -->
+  <section id="agent">
+    <h2><span class="num">04</span>The agent graph</h2>
+    <p>A LangGraph <code>StateGraph</code> over a typed <code>LastBiteState</code> (<span class="path">lib/agent/graph.ts:34</span>).
+    The cleverness is in the <strong>reducers</strong> and the <strong>routing</strong>, not in LLM autonomy.</p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>Searcher — deterministic by design</h3>
+        <p>One Groq call (<code>parseIntent</code>) yields a Zod-validated <code>Intent</code> with a hard
+        <em>“NEVER FABRICATE”</em> system prompt — null means “user didn’t say it”, which downstream filters respect
+        (<span class="path">lib/agent/intent.ts:55</span>). Then pure TS: <code>applyHardFilters</code> (rating, distance,
+        veg, name), <code>sortByQuality</code>, probe the top-3 menus, first clean cart wins
+        (<span class="path">graph.ts:143–206, 522–560</span>). Cart parsing is permissive over ~6 field-name conventions
+        (<span class="path">lib/agent/tools.ts:tryParseCart</span>).</p>
+      </div>
+      <div class="card">
+        <h3>Recommender — the “no silent fail” node</h3>
+        <p>When nothing meets every constraint, instead of a dead end it returns the closest near-misses with
+        <em>annotated reasons</em> — “8km away (&gt;5km cap)”, “4.0★ (asked ≥4.5★)” — and lets the user pick a number
+        (<span class="path">graph.ts:126–141, 563–612</span>). This node exists because no-match “used to fail silently”.</p>
+      </div>
+      <div class="card">
+        <h3>Confirmer — gates 1 &amp; 2</h3>
+        <p>Calorie then ETA, each via LangGraph <code>interrupt()</code>: the graph pauses, the route returns the prompt,
+        the next turn resumes on the reply. Anything not classifiable as YES re-prompts; STOP cancels
+        (<span class="path">graph.ts:614–637</span>, <code>classifyReply</code> handles Hinglish: <em>haan/nahi/ruko</em>).</p>
+      </div>
+      <div class="card">
+        <h3>Placer — where money is spent</h3>
+        <p>Final gate → <code>startGraceTimer</code> + <code>awaitGrace(30s)</code> → <code>consumeIdempotency</code> →
+        <code>effectiveMode</code> two-layer guard → real <code>place_food_order</code> or a <code>demo_</code> id
+        (<span class="path">graph.ts:639–740</span>). Order-id extraction parses both plain-text and JSON confirmations.</p>
+      </div>
+    </div>
+
+    <div class="callout green">
+      <p><strong>Two state-machine bugs already fixed, with the scar tissue documented in-code.</strong></p>
+      <p>① The <code>gatesPassed</code> reducer is <em>replace, not merge</em> — a merge leaked passed gates from a prior
+      terminal run into the next order on the same <code>thread_id</code>, which would have <em>skipped confirmation
+      entirely on every order after the first</em> (<span class="path">graph.ts:39–46</span>).</p>
+      <p>② The final gate once ignored its own reply and placed unconditionally — “caused a real ₹321 Paradise Biryani
+      order to fire when STOP was sent. Never again.” (<span class="path">graph.ts:651–660</span>). Both are now covered by
+      smoke regressions.</p>
+    </div>
+  </section>
+
+  <!-- ============ SAFETY ============ -->
+  <section id="safety">
+    <h2><span class="num">05</span>The 7-layer money-safety model</h2>
+    <p>This is the heart of the project and the part most worth studying. Each layer is independent — the design
+    assumption is that <em>any single layer can fail</em> and a real order still must not fire by accident. Verified
+    against the code, not just the doc.</p>
+
+    <div class="card" style="padding:6px 20px">
+      <div class="layer"><div class="ln">L1</div><div class="lb"><b>Server kill switch</b> — <code>LB_REAL_ORDERS=1</code> required or every order is demo.
+        <div class="w">Checked inside the Placer via <code>effectiveMode()</code>. <span class="path">lib/user-prefs.ts:8</span>. Worst case without it: “site exists, every order is demo, no money lost.”</div></div></div>
+      <div class="layer"><div class="ln">L2</div><div class="lb"><b>Per-user mode</b> — user must individually opt into Live; default demo, 30-day Redis key. Switching pops a rose <code>AlertDialog</code> (“cannot be cancelled after they fire”).
+        <div class="w">Global switch always wins: <code>effectiveMode = LB_REAL_ORDERS && mode:&lt;phone&gt;</code>. <span class="path">lib/user-prefs.ts:27</span></div></div></div>
+      <div class="layer"><div class="ln">L3</div><div class="lb"><b>Three interrupt() gates</b> — calorie, ETA, final. Each pauses the graph for explicit YES.
+        <div class="w">Non-YES re-prompts; STOP cancels. <span class="path">graph.ts:614–660</span></div></div></div>
+      <div class="layer"><div class="ln">L4</div><div class="lb"><b>30-second grace timer</b> — after final YES, a STOP window before commit. <code>awaitGrace</code> polls every 750ms with a <strong>5-failure circuit breaker</strong> that defaults to <em>cancelled</em> on Redis trouble.
+        <div class="w">“We’d rather waste your time than your ₹500.” <span class="path">lib/redis.ts:142–172</span>. <span style="color:var(--gold)">⚠ Interactive STOP during this window is WhatsApp-only — see F1.</span></div></div></div>
+      <div class="layer"><div class="ln">L5</div><div class="lb"><b>Idempotency</b> — <code>sha256(userId · cartHash · dayUTC)</code>, 24h TTL, <code>SETNX</code>. Second identical order returns <code>duplicate</code> without firing; released on transient failure so a retry is safe.
+        <div class="w"><span class="path">lib/redis.ts:76–88</span>, release wrapped in its own try/catch (audit B1#1).</div></div></div>
+      <div class="layer"><div class="ln">L6</div><div class="lb"><b>Per-user mutex</b> — <code>SETNX</code> lock, 180s TTL (&gt; the 60s function budget), compare-and-delete release. Concurrent inbound → fast <code>UserBusyError</code>.
+        <div class="w">TTL bumped 90→180s after the ₹321 race class. <span class="path">lib/redis.ts:119</span></div></div></div>
+      <div class="layer"><div class="ln">L7</div><div class="lb"><b>Abandoned-thread auto-clear</b> — a paused gate older than 30min is force-STOP’d and the new message starts fresh.
+        <div class="w">Stops “waking up to find yesterday’s YES finished an order.” <span class="path">lib/agent/runner.ts:63–72</span></div></div></div>
+    </div>
+
+    <p style="margin-top:18px">Supporting controls round it out: token <strong>redaction</strong> middleware strips
+    <code>Bearer ey…</code> / JWT shapes from every log (<span class="path">lib/redact.ts</span>), the WhatsApp webhook
+    <strong>fails closed in production</strong> when its secret is unset (<span class="path">app/api/whatsapp/route.ts:24</span>,
+    verified live → 403), inbound messages are deduped by id (<code>msg:</code> key), and an order-value ceiling rejects
+    carts ≥ ₹1000 to respect the Swiggy beta cap (<span class="path">graph.ts:369</span>).</p>
+
+    <div class="callout">
+      <p><strong>The doc is honest about what it does <em>not</em> protect:</strong> a compromised Swiggy MCP / MITM,
+      clipboard theft between Claude Desktop and <span class="path">/connect</span>, a malicious browser extension, and
+      server-side key compromise (mitigation: rotate <code>BYOC_ENCRYPTION_KEY</code>, every user force-reconnects,
+      ciphertexts become useless). <span class="path">docs/SAFETY.md</span> §“What is not protected”.</p>
+    </div>
+  </section>
+
+  <!-- ============ DATA ============ -->
+  <section id="data">
+    <h2><span class="num">06</span>Data &amp; crypto</h2>
+    <div class="grid g2">
+      <div>
+        <h3>Redis (Upstash) key families</h3>
+        <table>
+          <thead><tr><th>Key</th><th>TTL</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>byoc:&lt;phone&gt;</code></td><td>30d</td><td>AES-256-GCM bearer token at rest</td></tr>
+            <tr><td><code>mode:&lt;phone&gt;</code></td><td>1y</td><td>demo / live preference</td></tr>
+            <tr><td><code>lock:user:&lt;phone&gt;</code></td><td>180s</td><td>per-user mutex (random token)</td></tr>
+            <tr><td><code>last:&lt;phone&gt;</code></td><td>30d</td><td>activity heartbeat → abandon + cron</td></tr>
+            <tr><td><code>idem:&lt;sha256&gt;</code></td><td>24h</td><td>dedup the place call</td></tr>
+            <tr><td><code>grace:&lt;ref&gt;</code></td><td>grace+5s</td><td>pending / cancelled STOP window</td></tr>
+            <tr><td><code>msg:&lt;id&gt;</code></td><td>24h</td><td>WhatsApp inbound dedup</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>Encryption posture</h3>
+        <p>One env secret <code>BYOC_ENCRYPTION_KEY</code> (≥32 chars). <strong>Per-purpose subkeys</strong> via
+        <code>scrypt(secret, label)</code> — distinct labels for the BYOC token, the session cookie, and the OAuth state
+        blob — so rotating the env rotates all three in lockstep (<span class="path">lib/crypto.ts:21</span>,
+        <span class="path">lib/session.ts:18</span>, <span class="path">lib/swiggy-oauth.ts:124</span>).</p>
+        <ul>
+          <li>Token envelope: <code>base64(salt·iv·tag·ciphertext)</code>, AES-256-GCM (authenticated)</li>
+          <li>Session cookie <code>lb_session</code>: sealed <code>{phone,expiresAt}</code>, <code>HttpOnly; Secure; SameSite=Lax</code>, 30d</li>
+          <li>Decrypt failures are <strong>logged</strong> (<code>byoc.decrypt-failed</code>, <code>session.decrypt-failed</code>) so an accidental key rotation surfaces as a log flood, not a silent mass-logout</li>
+          <li>Token decrypted <em>only</em> inside <code>SwiggyClient</code> construction; never echoed, never returned to the client</li>
+        </ul>
+      </div>
+    </div>
+    <p class="muted">LangGraph state is checkpointed in Neon Postgres per <code>thread_id = phone</code>, via a pg.Pool capped at 2
+    per lambda (Fluid Compute multiplies pools). The connection string must bypass PgBouncer — the transaction pooler
+    breaks LangGraph’s prepared statements (<span class="path">lib/agent/checkpointer.ts:18–33</span>). A daily Vercel cron
+    sweeps checkpoints idle &gt;7 days, carefully skipping threads with no heartbeat so it can’t race-delete a fresh one.</p>
+  </section>
+
+  <!-- ============ QUALITY ============ -->
+  <section id="quality">
+    <h2><span class="num">07</span>Code-quality signals</h2>
+    <div class="grid g2">
+      <div class="card">
+        <h3>What’s genuinely good</h3>
+        <ul style="margin-bottom:0">
+          <li><strong>Typed error taxonomies at every boundary.</strong> <code>SwiggyMcpError.kind</code> (auth/rate-limit/not-found/address-stale/other) and <code>IntentParseError.kind</code> (timeout/rate-limit/config/schema/other) drive both user copy <em>and</em> log greppability. Word-boundary regex (<code>\b401\b</code>) so “4015 bytes” can’t trigger a token wipe.</li>
+          <li><strong>Defensive parsing of a drifting upstream.</strong> Every Swiggy shape is parsed permissively and <em>logs when the envelope is missing</em> — so schema drift shows up as <code>agent.parse.*</code> instead of silent “no restaurants”.</li>
+          <li><strong>Silent-failure discipline.</strong> Bare <code>catch(()=&gt;{})</code> was systematically replaced with <code>safeLog</code>; the audit doc enumerates all 18.</li>
+          <li><strong>Request correlation.</strong> <code>AsyncLocalStorage</code> stamps every log with an 8-char request id + user id (<span class="path">lib/log-context.ts</span>).</li>
+          <li><strong>Comments explain <em>why</em>, citing real incidents</strong> — the ₹321 order, the gate-leak reducer, the PgBouncer break, the setup-promise poison.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Texture &amp; conventions</h3>
+        <ul style="margin-bottom:0">
+          <li>Strict TS, Zod at every trust boundary (intent, cart, interrupt payloads as a discriminated union).</li>
+          <li>Clean separation: <code>lib/agent</code> (brain), <code>lib/mcp</code> (I/O), <code>lib/*</code> (primitives), routes are thin.</li>
+          <li>Graceful degradation: persona LLM optional (heuristic kcal fallback), Postgres optional (MemorySaver), Redis offline shim for smoke.</li>
+          <li><code>PostgresSaver.setup()</code> rejection clears its cached promise so one bad cold-start can’t poison the lambda forever.</li>
+          <li>Local secrets (<code>.env*</code>, <code>.admin-secret.local</code>, <code>.swiggy-oauth-client.json</code>) are git-ignored — none are tracked.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout green"><p><strong>Overall:</strong> the failure-handling is the most mature thing in the repo. Most “AI agent” side-projects swallow errors and pray; this one classifies, logs, and tests them.</p></div>
+  </section>
+
+  <!-- ============ FINDINGS ============ -->
+  <section id="findings">
+    <h2><span class="num">08</span>Findings &amp; risks</h2>
+    <p>Calibrated against the project’s own bar. Nothing here is a live money-loss bug today — the two-layer kill switch
+    keeps the deployed site in demo — but several are real gaps between the <em>marketed</em> behavior and the
+    <em>shipped</em> behavior, and a couple are latent the day someone flips <code>LB_REAL_ORDERS=1</code>.</p>
+
+    <div class="finding">
+      <div class="fh"><span class="sev med">MEDIUM</span><span class="t">F1 · The “visible 30-second countdown, type STOP to cancel” is WhatsApp-only</span></div>
+      <p>The marketing promise — hero <em>“waits 30 seconds before committing”</em>, how-it-works <em>“visible countdown after
+      the final YES. Reply STOP to cancel”</em>, FAQ <em>“a visible 30-second window where typing STOP cancels”</em>, and
+      <span class="path">docs/SAFETY.md</span> L4 — is only fully true on the unprovisioned WhatsApp channel.</p>
+      <p><strong>Why.</strong> Only <span class="path">app/api/whatsapp/route.ts:90</span> checks <code>isGraceActive()</code>
+      <em>before</em> acquiring the lock, so a WhatsApp STOP can call <code>cancelGrace()</code> mid-window. On the
+      <strong>web</strong> surface: (a) there is no client-side countdown component in <span class="path">app/order/new/page.tsx</span>
+      (the <code>graceSeconds</code> in the interrupt payload is plumbed to the client but unused); and (b) after the final YES
+      the Placer blocks ~30s inside <code>awaitGrace()</code> <em>while holding the per-user lock</em>. A web STOP during that
+      window hits <span class="path">/api/chat</span> → <code>acquireUserLock</code> fails → <code>UserBusyError</code> → 429
+      “finishing your previous message.” The UI just shows <em>“Working on it…”</em> with the input disabled.</p>
+      <p><strong>Net.</strong> On web, the final layer of the headline regret-prevention feature is a non-interactive server
+      delay. STOP works at <em>every gate including the final prompt</em> — but not in the 30s <em>after</em> the final YES.
+      <code>cancelGrace</code>/<code>isGraceActive</code> are referenced nowhere outside the WhatsApp route.</p>
+      <p class="meta"><span class="pill">latent unless LB_REAL_ORDERS=1</span> Fix: add an <code>isGraceActive</code> pre-lock check + a cancel endpoint to the web path, and render the countdown the payload already carries — or soften the copy to “a 30s delay” for web.</p>
+    </div>
+
+    <div class="finding">
+      <div class="fh"><span class="sev low">LOW</span><span class="t">F2 · README states the wrong intent model</span></div>
+      <p><span class="path">README.md:54</span> and the stack table <span class="path">README.md:88</span> say intent extraction is
+      Groq <code>llama-3.1-8b-instant</code>. The code defaults to <code>openai/gpt-oss-20b</code>
+      (<span class="path">lib/agent/intent.ts:53</span>) — and the <span class="path">CHANGELOG</span> documents <em>why</em> they switched
+      (Llama models reject AI-SDK v6’s <code>json_schema</code> response format). <span class="path">docs/ARCHITECTURE.md:232</span>
+      is correct; the README simply wasn’t updated after the fix.</p>
+    </div>
+
+    <div class="finding">
+      <div class="fh"><span class="sev low">LOW</span><span class="t">F3 · “signature verification” overstates the webhook control</span></div>
+      <p><span class="path">README.md:136</span> says the WhatsApp webhook has “signature verification.” It’s actually a
+      <strong>shared-secret</strong> compare against a header or <code>?secret=</code> query param
+      (<span class="path">app/api/whatsapp/route.ts:24–37</span>) — there is no HMAC over the payload, and
+      <code>parseInbound</code> does no cryptographic check. SAFETY.md gets this right (“webhook secret”); only the README
+      term is inflated. The query-param fallback also risks the secret landing in access logs/referrers.</p>
+    </div>
+
+    <div class="finding">
+      <div class="fh"><span class="sev low">LOW</span><span class="t">F4 · Dead / misleading config in .env.example</span></div>
+      <ul style="margin:.2em 0 .4em">
+        <li><code>LASTBITE_AGENT_MODEL</code> — declared and even given a default; <strong>nothing reads it</strong>. The real knob is <code>LASTBITE_INTENT_MODEL</code>.</li>
+        <li><code>SKIP_TOKEN_VALIDATION</code> — comment claims it “bypasses the live Swiggy MCP token-validation probe,” but <strong>no code consumes it</strong>; <span class="path">app/api/oauth/byoc/route.ts</span> always calls <code>SwiggyClient.validate()</code>. The documented escape hatch doesn’t exist.</li>
+      </ul>
+      <p class="meta">Both verified by source grep. Harmless at runtime, but config that lies is a debugging trap.</p>
+    </div>
+
+    <div class="finding">
+      <div class="fh"><span class="sev low">LOW</span><span class="t">F5 · SAFETY.md slightly overstates upstream idempotency</span></div>
+      <p>The money-invariants table implies “idempotency upstream is also Swiggy-side.” The Placer comment is more honest:
+      <em>“idempotency_key isn’t part of the schema — server-side dedup is governed by Swiggy”</em>
+      (<span class="path">graph.ts:704–708</span>). In practice the dedup guarantee is <strong>local</strong> (the <code>idem:</code>
+      key + the 180s mutex); whether Swiggy dedups a repeated <code>place_food_order</code> is an assumption, not something
+      Last Bite controls. The local controls are sound; just don’t lean on a Swiggy-side guarantee in the contract.</p>
+    </div>
+
+    <div class="finding">
+      <div class="fh"><span class="sev info">MINOR</span><span class="t">F6 · A personal phone number is hardcoded in a script that hits prod</span></div>
+      <p><span class="path">scripts/live-e2e.ts:45</span> returns <code>+916304362869</code> as a fallback and drives the
+      <em>production</em> <span class="path">/api/admin/run-turn</span> endpoint. Fine for the author’s own loop, but it’s a real
+      number committed to a public repo and a script that places real turns against prod.</p>
+    </div>
+
+    <div class="finding">
+      <div class="fh"><span class="sev info">MINOR</span><span class="t">F7 · Non-constant-time secret compares; XFF-trusting rate-limit key</span></div>
+      <p>Admin and webhook secrets compare with <code>!==</code> (<span class="path">app/api/admin/*</span>,
+      <span class="path">app/api/whatsapp/route.ts</span>) rather than a timing-safe equal — negligible against high-entropy
+      secrets, but trivial to harden. The connect rate-limiter keys on the first <code>x-forwarded-for</code> hop
+      (<span class="path">lib/ratelimit.ts:26</span>); on Vercel the platform sets XFF, but it’s worth being explicit that the
+      key is only as trustworthy as the proxy chain.</p>
+    </div>
+
+    <div class="callout blue"><p><strong>Calibration.</strong> F2–F7 are the kind of small drift that accumulates in a fast-moving
+    solo build; the project’s own audit caught 18 deeper issues, so the bar here is high. F1 is the one worth fixing before
+    the “30-second STOP” line goes in front of a non-WhatsApp user.</p></div>
+  </section>
+
+  <!-- ============ TESTS ============ -->
+  <section id="tests">
+    <h2><span class="num">09</span>Tests &amp; verification</h2>
+    <p><span class="path">scripts/smoke.ts</span> is a dependency-free regression harness: in-memory Redis, fixture MCP,
+    persona skipped, 1-second grace. It exits non-zero on any deviation. Eight scenarios — and notably, the two that exist
+    <em>because of real bugs</em>:</p>
+    <table>
+      <thead><tr><th>#</th><th>Scenario</th><th>Asserts</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Happy path</td><td>query → calorie → ETA → final → <code>placed</code></td></tr>
+        <tr><td>2</td><td>STOP during grace</td><td>cancel mid-window → <code>cancelled</code> <span class="muted">(via the webhook-style direct <code>cancelGrace</code> — mirrors F1)</span></td></tr>
+        <tr><td>3</td><td>Idempotency</td><td>same user/cart/day twice → <code>duplicate</code></td></tr>
+        <tr><td>4</td><td>Unclear reply</td><td>re-prompts, keeps gate state, YES still advances</td></tr>
+        <tr><td>5</td><td><strong>Gate-leak regression</strong></td><td>2nd order on same thread starts at calorie, not final</td></tr>
+        <tr><td>6</td><td>Abandoned timeout</td><td>&gt;30min stale gate auto-clears to a fresh order</td></tr>
+        <tr><td>7</td><td><strong>Final-gate STOP regression</strong></td><td>STOP at final → <code>cancelled</code>, never <code>placed</code> (the ₹321 class)</td></tr>
+        <tr><td>8</td><td>Concurrent mutex</td><td>two parallel inbounds → 1 succeeds, 1 <code>UserBusyError</code></td></tr>
+      </tbody>
+    </table>
+    <div class="callout">
+      <p><strong>Coverage shape.</strong> Excellent on the <em>state machine</em> and safety invariants. The gaps are the
+      usual ones for this stage: no test exercises the real <code>parseIntent</code> path (LLM is stubbed), no HTTP-route
+      tests (auth, rate-limit, fail-closed webhook — those are verified manually / live per the docs), and the web-surface
+      grace behavior in F1 isn’t asserted (scenario 2 takes the webhook path). There’s no CI config in the repo, so the
+      smoke run is manual (<code>npm run smoke</code>). Live scripts (<code>live-e2e</code>, <code>capture-real-fixtures</code>,
+      <code>real-mcp-probe</code>, <code>snapshot-cart</code>) hit real Swiggy and deliberately never call
+      <code>place_food_order</code> to avoid charges.</p>
+    </div>
+  </section>
+
+  <!-- ============ MATURITY ============ -->
+  <section id="maturity">
+    <h2><span class="num">10</span>Maturity signals</h2>
+    <div class="grid g3">
+      <div class="card"><h3>Self-audit with calibration</h3><p><span class="path">docs/AUDIT_2026-05.md</span> ran two review agents, graded copy by FALSE/MISLEADING/OVERREACH and failures by CRITICAL/HIGH/MEDIUM, and lists per-issue commit refs. It ends with a <em>calibration note</em> owning that the author previously claimed “10/10 polished” without auditing copy against the stated audience.</p></div>
+      <div class="card"><h3>Incident → regression</h3><p>The ₹321 order is recorded in <span class="path">CHANGELOG.md</span>, the runbook, the demo-script “don’ts”, and is pinned by smoke scenario 7. The mutex TTL bump (90→180s) is traced to the same race class.</p></div>
+      <div class="card"><h3>Operable</h3><p><span class="path">docs/RUNBOOK.md</span> is a real incident playbook with a ~60-line log-signature catalog; <span class="path">docs/DEPLOYMENT.md</span> documents every env var and post-deploy probes; a daily cron handles checkpoint GC.</p></div>
+      <div class="card"><h3>Honest copy pass</h3><p>An entire commit reframed consumer-facing claims to match the BYOC reality (amber “Developer beta · requires Claude Desktop” badge, realistic 10–15 min setup, AES-256 “security theater” pills removed).</p></div>
+      <div class="card"><h3>Compliance posture</h3><p>Anonymous-by-default, 30-day TTLs, redaction, a live <span class="path">/privacy</span> page worded as “aligned with the principles of DPDP” — and the audit explicitly <em>defers</em> the stronger “DPDP-grade” claim until a grievance officer / Data Fiduciary exists.</p></div>
+      <div class="card"><h3>Brand discipline</h3><p>“Powered by Swiggy” is enforced as a component with a comment forbidding restyling-to-hide, appended even to outbound WhatsApp text; copy never aggregates competitors or rebrands — matching the <span class="path">CLAUDE.md</span> operating rules.</p></div>
+    </div>
+  </section>
+
+  <!-- ============ PORTFOLIO ============ -->
+  <section id="portfolio">
+    <h2><span class="num">11</span>Portfolio framing</h2>
+    <p>Read as a portfolio artifact, this is strong precisely <em>because</em> it’s narrow. It demonstrates the skills an
+    agentic-commerce / applied-AI role actually screens for:</p>
+    <div class="grid g2">
+      <div>
+        <ul>
+          <li><strong>Human-in-the-loop agent design</strong> with LangGraph <code>interrupt()</code>, not a chat wrapper.</li>
+          <li><strong>Spending-money safety</strong> as a first-class, layered, tested concern.</li>
+          <li><strong>MCP integration</strong> against a real, drifting, beta third-party server — with fixtures captured from the live tool.</li>
+          <li><strong>Deterministic-where-it-matters</strong> judgment: LLM for intent only, TS for everything that affects an order.</li>
+        </ul>
+      </div>
+      <div>
+        <ul>
+          <li><strong>Production operability</strong>: typed errors, redaction, request ids, runbook, cron GC.</li>
+          <li><strong>Calibrated communication</strong>: the audit + honest-copy pass are unusually self-aware.</li>
+          <li><strong>Constraint navigation</strong>: turned an upstream whitelist blocker into a documented BYOC bridge instead of faking access.</li>
+        </ul>
+        <p class="muted">The <span class="path">CLAUDE.md</span> five-project arc shows intent to compound (~60% reuse per project), but only Project 1 exists — judge it as one deep project, not a portfolio of five.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RECO ============ -->
+  <section id="reco">
+    <h2><span class="num">12</span>Recommendations</h2>
+    <table>
+      <thead><tr><th>Priority</th><th>Action</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sev med">DO FIRST</span></td><td>Close the web grace gap (F1): pre-lock <code>isGraceActive</code> check + a cancel route, and render the countdown the payload already carries — or align the web copy.</td><td>It’s the headline promise, and the only finding touching the core safety story.</td></tr>
+        <tr><td><span class="sev low">QUICK</span></td><td>Fix README intent model (F2), soften “signature verification” (F3), delete dead env vars (F4).</td><td>Minutes of work; the repo’s whole credibility pitch is calibration.</td></tr>
+        <tr><td><span class="sev low">QUICK</span></td><td>Move the live-e2e fallback phone to an env var (F6); switch secret compares to <code>timingSafeEqual</code> (F7).</td><td>Hygiene; one is a real number in a public repo.</td></tr>
+        <tr><td><span class="sev info">SOON</span></td><td>Add a CI workflow that runs <code>npm run smoke</code> + <code>tsc --noEmit</code> + <code>eslint</code> on PRs.</td><td>The harness exists but nothing runs it automatically.</td></tr>
+        <tr><td><span class="sev info">SOON</span></td><td>Add HTTP-route tests for auth / rate-limit / webhook fail-closed, currently only verified manually.</td><td>These are security-relevant and easy to regress.</td></tr>
+        <tr><td><span class="sev info">LATER</span></td><td>Re-word SAFETY.md’s upstream-idempotency line (F5); add the deferred recommender error-context once request-ids are in error responses.</td><td>Already self-flagged as deferred in the audit.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <hr/>
+
+  <!-- ============ MAP ============ -->
+  <section id="map">
+    <h2><span class="num">A</span>File map (the parts that matter)</h2>
+<pre>lib/agent/
+  graph.ts        <span class="dim">790  StateGraph · Searcher/Recommender/Confirmer/Placer · gates · grace · idem</span>
+  runner.ts       <span class="dim">176  one-turn driver · lock · abandoned-thread · unclear re-prompt</span>
+  intent.ts       <span class="dim">136  Groq parseIntent · Zod Intent · IntentParseError.kind</span>
+  tools.ts        <span class="dim">139  tryParseCart — permissive cart coercion</span>
+  persona.ts      <span class="dim"> 78  Haiku gate copy + heuristic kcal fallback</span>
+  schemas.ts      <span class="dim"> 73  Cart · InterruptPayload union · classifyReply (Hinglish)</span>
+  checkpointer.ts <span class="dim"> 57  Postgres/Memory saver · pool cap · setup-poison fix</span>
+lib/
+  mcp/swiggy-client.ts  <span class="dim">231  MCP client · SwiggyMcpError.kind · unwrap · fixtures · validate</span>
+  redis.ts        <span class="dim">190  locks · grace+circuit-breaker · idem · dedup · memory shim</span>
+  swiggy-oauth.ts <span class="dim">188  PKCE + RFC7591 DCR + sealed-cookie state (parked behind #53)</span>
+  session.ts crypto.ts byoc.ts redact.ts user-prefs.ts ratelimit.ts log-context.ts
+app/api/   chat · whatsapp · oauth/{start,callback,byoc} · me{,/mode} · admin/{run-turn,list-orders} · cron
+app/       page · connect{,/success} · order/new(815) · order/[id] · privacy · opengraph-image
+docs/      ARCHITECTURE · SAFETY · AUDIT_2026-05 · RUNBOOK · DEPLOYMENT · BUILDERS_CLUB · DEMO_VIDEO_SCRIPT
+scripts/   smoke(offline) · live-e2e · capture-real-fixtures · real-mcp-probe · snapshot-cart</pre>
+  </section>
+
+  <!-- ============ METHOD ============ -->
+  <section id="method">
+    <h2><span class="num">B</span>Method &amp; caveats</h2>
+    <p>This analysis read the full agent core, all <code>lib/</code> primitives, every API route, the safety/architecture/audit/changelog
+    docs, the smoke harness, the env contract and Vercel config directly; frontend pages, scripts and remaining docs were
+    summarized via an exploration pass. Every finding cites a verified <span class="path">file:line</span>; the dead-config and
+    model-drift claims were confirmed by source grep. The codebase was not executed and no build/typecheck was run as part of
+    this pass — assertions about runtime behavior (e.g. F1’s lock/grace interaction) are derived from reading the control flow,
+    not from a live repro. Severities are calibrated to the project’s own standard, which is high.</p>
+    <p class="muted">Generated as a static, self-contained artifact — no external assets, opens offline.</p>
+  </section>
+
+  </main>
+
+  <footer>
+    Last Bite · deep analysis · independent read of the <code>swiggy-mcp</code> repository (Project 1 of 5).
+    Not affiliated with Swiggy. All quoted copy and line references belong to the analyzed repository.
+  </footer>
+
+</div>
+</body>
+</html>

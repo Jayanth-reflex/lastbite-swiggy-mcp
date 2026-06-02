@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Last Bite v2 — Architecture &amp; HLD</title>
+<style>
+  :root{
+    --bg:#0c0e12; --bg2:#11141b; --panel:#151923; --panel2:#1b202c;
+    --line:#262d3a; --line2:#323b4d;
+    --ink:#e7ecf3; --ink2:#aeb7c6; --ink3:#7c8699;
+    --amber:#ff9f43; --amber2:#ffb56b; --gold:#ffd479;
+    --green:#3ecf8e; --red:#ff5d6c; --blue:#5aa9ff; --violet:#b08bff; --teal:#3fd6c8;
+    --mono:"SF Mono",SFMono-Regular,ui-monospace,"Cascadia Code","JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:
+    radial-gradient(1200px 600px at 80% -10%, rgba(255,159,67,.10), transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, rgba(90,169,255,.06), transparent 55%),
+    var(--bg);
+    color:var(--ink);font-family:var(--sans);line-height:1.62;font-size:15.5px;-webkit-font-smoothing:antialiased}
+  a{color:var(--amber2);text-decoration:none} a:hover{text-decoration:underline}
+  code,kbd{font-family:var(--mono);font-size:.86em}
+  .wrap{display:grid;grid-template-columns:264px minmax(0,1fr);max-width:1320px;margin:0 auto}
+
+  header.top{grid-column:1/-1;position:sticky;top:0;z-index:30;background:rgba(12,14,18,.82);
+    backdrop-filter:blur(12px);border-bottom:1px solid var(--line);padding:13px 28px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header.top .brand{font-weight:700;font-size:16px;letter-spacing:.2px}
+  header.top .brand .dot{color:var(--amber)}
+  header.top .sub{color:var(--ink3);font-size:12.5px}
+  header.top .spacer{flex:1}
+  .badge{display:inline-flex;align-items:center;gap:8px;background:linear-gradient(180deg,#0e1f17,#0a1711);
+    border:1px solid #1d4536;color:var(--green);padding:6px 12px;border-radius:999px;font-size:12px;font-weight:600}
+
+  nav.toc{position:sticky;top:56px;align-self:start;height:calc(100vh - 56px);overflow:auto;
+    padding:20px 14px 60px 24px;border-right:1px solid var(--line);font-size:13px}
+  nav.toc h4{margin:16px 0 7px;color:var(--ink3);text-transform:uppercase;letter-spacing:.12em;font-size:10.5px;font-weight:700}
+  nav.toc a{display:block;color:var(--ink2);padding:4px 10px;border-radius:7px}
+  nav.toc a:hover{background:var(--panel);color:var(--ink);text-decoration:none}
+
+  main{padding:34px 42px 120px;min-width:0}
+  section{margin:0 0 46px;scroll-margin-top:72px}
+  h1{font-size:30px;margin:.1em 0 .3em;letter-spacing:-.4px}
+  h2{font-size:21px;margin:1.3em 0 .5em;padding-bottom:8px;border-bottom:1px solid var(--line);letter-spacing:-.2px}
+  h2 .num{color:var(--amber);font-family:var(--mono);font-size:15px;margin-right:10px}
+  h3{font-size:15.5px;margin:1.3em 0 .35em;color:var(--ink)}
+  p{margin:.6em 0;color:var(--ink2)} strong{color:var(--ink)}
+  ul,ol{margin:.5em 0 .9em;padding-left:20px} li{margin:.3em 0;color:var(--ink2)}
+  .lead{font-size:16.5px;color:var(--ink2)} .muted{color:var(--ink3)}
+  hr{border:0;border-top:1px solid var(--line);margin:30px 0}
+
+  .pill{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:6px;border:1px solid var(--line2);color:var(--ink2);background:var(--panel);white-space:nowrap}
+  .path{font-family:var(--mono);font-size:12.4px;color:var(--amber2);background:#1a130a;border:1px solid #3a2a14;padding:1px 6px;border-radius:5px}
+  .new{color:var(--green);font-weight:700} .keep{color:var(--blue);font-weight:700} .kill{color:var(--red);font-weight:700}
+
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)} .g3{grid-template-columns:repeat(3,1fr)} .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:1080px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(2,1fr)}}
+
+  .card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:14px;padding:17px 18px}
+  .card h3{margin:.1em 0 .35em}
+  .stat{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-radius:14px;padding:15px 16px}
+  .stat .v{font-size:25px;font-weight:750;color:#fff;letter-spacing:-.5px;font-family:var(--mono)}
+  .stat .l{font-size:12px;color:var(--ink3);margin-top:2px}
+  .stat .v.amber{color:var(--amber)} .stat .v.green{color:var(--green)} .stat .v.blue{color:var(--blue)} .stat .v.violet{color:var(--violet)}
+
+  table{width:100%;border-collapse:collapse;margin:.6em 0 1em;font-size:13.4px;display:block;overflow-x:auto}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--ink3);font-weight:650;font-size:11.3px;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap}
+  td{color:var(--ink2)} td strong{color:var(--ink)}
+  tbody tr:hover{background:var(--panel)}
+
+  pre{background:#0a0c10;border:1px solid var(--line);border-radius:12px;padding:16px 18px;overflow:auto;font-family:var(--mono);font-size:12.4px;line-height:1.5;color:#cdd6e4}
+  pre b{color:var(--gold);font-weight:600} pre .dim{color:var(--ink3)} pre .ok{color:var(--green)} pre .hot{color:var(--red)} pre .ar{color:var(--amber)} pre .bl{color:var(--blue)} pre .vi{color:var(--violet)}
+
+  .callout{border-left:3px solid var(--amber);background:linear-gradient(90deg,rgba(255,159,67,.07),transparent 80%);padding:12px 16px;border-radius:0 10px 10px 0;margin:14px 0}
+  .callout.green{border-color:var(--green);background:linear-gradient(90deg,rgba(62,207,142,.07),transparent 80%)}
+  .callout.red{border-color:var(--red);background:linear-gradient(90deg,rgba(255,93,108,.08),transparent 80%)}
+  .callout.blue{border-color:var(--blue);background:linear-gradient(90deg,rgba(90,169,255,.07),transparent 80%)}
+  .callout p{margin:.25em 0}
+
+  .tag{display:inline-block;font-size:11px;font-family:var(--mono);color:var(--ink2);border:1px solid var(--line2);border-radius:6px;padding:2px 7px;margin:2px 3px 2px 0;background:var(--bg2)}
+
+  /* layer diagram */
+  .lyr{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:10px 0;background:linear-gradient(180deg,var(--panel),var(--bg2))}
+  .lyr .lh{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink3);font-weight:700;margin-bottom:9px}
+  .lyr .row{display:flex;gap:10px;flex-wrap:wrap}
+  .box{flex:1;min-width:150px;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;background:var(--bg2)}
+  .box b{display:block;color:#fff;font-size:13.5px;margin-bottom:2px}
+  .box span{font-size:11.7px;color:var(--ink3);line-height:1.4}
+  .box.amber{border-color:#5a3f12;background:#1a130a} .box.amber b{color:var(--gold)}
+  .box.green{border-color:#1d4536;background:#0c1812} .box.green b{color:var(--green)}
+  .box.blue{border-color:#214066;background:#0c1422} .box.blue b{color:var(--blue)}
+  .box.red{border-color:#5a1a22;background:#1a0c0e} .box.red b{color:var(--red)}
+  .box.violet{border-color:#3a2a5a;background:#130f1c} .box.violet b{color:var(--violet)}
+  .down{text-align:center;color:var(--ink3);font-size:16px;margin:-2px 0}
+
+  .sev{font-family:var(--mono);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:5px;letter-spacing:.04em}
+  .sev.p0{background:#2a0d11;color:var(--red);border:1px solid #5a1a22}
+  .sev.p1{background:#2a1d06;color:var(--gold);border:1px solid #5a3f12}
+  .sev.p2{background:#0e1f17;color:var(--green);border:1px solid #1d4536}
+
+  .step{display:flex;gap:13px;padding:11px 0;border-bottom:1px dashed var(--line)}
+  .step:last-child{border-bottom:0}
+  .step .n{font-family:var(--mono);font-size:12px;color:var(--amber);min-width:30px;font-weight:700;padding-top:2px}
+  .step .b b{color:#fff}
+
+  footer{grid-column:1/-1;border-top:1px solid var(--line);padding:22px 42px 60px;color:var(--ink3);font-size:12.4px}
+  @media(max-width:880px){.wrap{grid-template-columns:1fr} nav.toc{display:none} main{padding:22px 18px 90px}.g2,.g3,.g4{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="brand">Last Bite <span class="dot">v2</span> · Architecture &amp; HLD</div>
+      <div class="sub">cloud-first · multi-model · OAuth MCP · workflow engine</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="badge">● Design draft — for your review</div>
+  </header>
+
+  <nav class="toc">
+    <h4>HLD</h4>
+    <a href="#summary">Summary &amp; what changed</a>
+    <a href="#decisions">Locked decisions</a>
+    <a href="#mcp">Swiggy MCP reality</a>
+    <a href="#context">System context</a>
+    <a href="#layers">Layered HLD</a>
+    <a href="#gate">★ The Spending Gate</a>
+    <a href="#models">Multi-model gateway</a>
+    <a href="#auth">Auth &amp; token vault</a>
+    <a href="#chat">Chat system</a>
+    <a href="#workflows">Workflow engine</a>
+    <a href="#whatsapp">WhatsApp channel</a>
+    <a href="#security">Security model</a>
+    <a href="#data">Data model</a>
+    <h4>Flows</h4>
+    <a href="#flow-order">Interactive order</a>
+    <a href="#flow-auto">Scheduled auto-order</a>
+    <a href="#flow-oauth">OAuth connect</a>
+    <h4>Plan</h4>
+    <a href="#remove">Remove / keep / build</a>
+    <a href="#roadmap">Phased roadmap</a>
+    <a href="#risks">Open items &amp; risks</a>
+    <a href="#refs">References</a>
+  </nav>
+
+  <main>
+
+  <!-- SUMMARY -->
+  <section id="summary">
+    <h1>Last Bite v2 — from a food bot to a model-agnostic Swiggy agent</h1>
+    <p class="lead">v1 is a single-tenant, food-only web bot reached through a Claude-Desktop token hack, with the model
+    hard-wired. v2 is a <strong>cloud-first, multi-tenant, multi-model chat app</strong> that connects to all three Swiggy MCP
+    surfaces over native OAuth, remembers your conversations, and lets you save <strong>prompt-workflows that run on a
+    trigger</strong> — with one non-negotiable invariant carried over and generalized: <strong>no irreversible order ever
+    fires without passing a spending gate.</strong></p>
+
+    <div class="grid g4" style="margin:20px 0 4px">
+      <div class="stat"><div class="v green">4</div><div class="l">decisions you locked</div></div>
+      <div class="stat"><div class="v amber">3</div><div class="l">Swiggy surfaces (food·im·dineout)</div></div>
+      <div class="stat"><div class="v blue">N</div><div class="l">models via 1 gateway</div></div>
+      <div class="stat"><div class="v violet">1</div><div class="l">gate, below every model + channel</div></div>
+    </div>
+
+    <div class="callout green">
+      <p><strong>The thesis.</strong> Using Swiggy MCP inside Claude/ChatGPT gives you one model, one session, no memory of
+      your routines, and no automation. Last Bite v2's wedge is exactly those gaps: <strong>persistent threads + your choice of
+      model + saved workflows that trigger themselves</strong> — wrapped in a safety layer those generic apps don't have for
+      irreversible COD spend.</p>
+    </div>
+
+    <p class="muted">This document is the high-level design for your review. Diagrams and component contracts below. Nothing
+    is built yet — once you approve, I write the spec + an implementation plan.</p>
+  </section>
+
+  <!-- DECISIONS -->
+  <section id="decisions">
+    <h2><span class="num">00</span>Locked decisions (your answers) + proposed defaults</h2>
+    <table>
+      <thead><tr><th>#</th><th>Decision</th><th>Choice</th><th>Consequence</th></tr></thead>
+      <tbody>
+        <tr><td>D1</td><td>Model gateway</td><td><strong>Vercel AI Gateway</strong></td><td>One <code>creator/model</code> interface, operator-held keys, zero markup, built-in fallback + spend observability. Users pick a model; we route.</td></tr>
+        <tr><td>D2</td><td>Scheduled-order safety</td><td><strong>Async confirm</strong></td><td>A trigger never spends silently. Workflow builds the cart → notifies you → places <em>only</em> on explicit YES inside a window. The gate goes async, never disappears.</td></tr>
+        <tr><td>D3</td><td>Accounts + token vault</td><td><strong>Supabase Auth + encrypted tokens, RLS</strong></td><td>Real accounts (email/Google). Swiggy OAuth tokens AES-256-GCM at rest in Postgres, row-level-security isolated per user.</td></tr>
+        <tr><td>D4</td><td>WhatsApp</td><td><strong>Gupshup BSP, in v1</strong></td><td>Official India BSP, already partly wired. Notify + trigger only; respects 24h window + approved templates.</td></tr>
+        <tr><td>D5</td><td>Repo strategy</td><td><strong>Greenfield</strong></td><td>Fresh Next.js + Supabase project; port the proven gate / OAuth / redaction logic. No single-tenant LangGraph baggage.</td></tr>
+        <tr><td>D6</td><td>Sign-in</td><td><strong>Google + Email magic-link</strong></td><td>No passwords. Phone collected only when a user links WhatsApp. Minimal-PII / DPDP-friendly.</td></tr>
+        <tr><td>D7</td><td>Live orders</td><td><strong>Self-serve toggle + env master</strong></td><td>Any user can toggle demo→live (default demo). Global <code>LB_REAL_ORDERS</code> stays as operator master kill-switch → public deploys stay demo until Swiggy prod approval.</td></tr>
+        <tr><td>D8</td><td>Model catalog</td><td><strong>Full (OpenClaw-style)</strong></td><td>All providers via Vercel AI Gateway — Anthropic, Google, xAI, DeepSeek, OpenAI, Mistral, Groq + OpenRouter meta-provider. Agentic threads pinned to a tool-reliable model.</td></tr>
+      </tbody>
+    </table>
+    <p><strong>Proposed defaults</strong> (low-risk; tell me if any is wrong — I won't assume silently):</p>
+    <div class="grid g4">
+      <div class="card"><h3>Host</h3><p class="muted" style="font-size:13px;margin:0">Vercel, region <code>bom1</code>, Fluid Compute. Same as today.</p></div>
+      <div class="card"><h3>Triggers / cron</h3><p class="muted" style="font-size:13px;margin:0">Upstash <strong>QStash</strong> for scheduled workflows, async-confirm timeouts, and tracking polls.</p></div>
+      <div class="card"><h3>Ephemeral state</h3><p class="muted" style="font-size:13px;margin:0">Keep <strong>Upstash Redis</strong> for locks · grace · idempotency · dedup · rate-limit. <em>Tokens move to Supabase</em>.</p></div>
+      <div class="card"><h3>Agentic model</h3><p class="muted" style="font-size:13px;margin:0">Tool-calling threads default to a tool-reliable flagship (Claude / Grok); plain chat = free model choice.</p></div>
+    </div>
+  </section>
+
+  <!-- MCP REALITY -->
+  <section id="mcp">
+    <h2><span class="num">01</span>Swiggy MCP reality (the constraints we design around)</h2>
+    <div class="grid g2">
+      <div>
+        <table>
+          <thead><tr><th>Surface</th><th>Tools</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Food</strong> <span class="muted">/food</span></td><td>14 — search/menu/cart/<code>place_food_order</code>/coupons/orders/<code>track_food_order</code></td></tr>
+            <tr><td><strong>Instamart</strong> <span class="muted">/im</span></td><td>search_products · cart · <code>checkout</code> · track_order · get_orders</td></tr>
+            <tr><td><strong>Dineout</strong> <span class="muted">/dineout</span></td><td>discover · details · get_available_slots · <code>book_table</code> · status</td></tr>
+          </tbody>
+        </table>
+        <p class="muted" style="font-size:12.6px">~35 tools total. The <strong>3 bold tools</strong> are the only ones that commit/spend — the gate wraps exactly those.</p>
+      </div>
+      <div class="card red" style="border-color:#5a1a22;background:linear-gradient(180deg,#1a0c0e,#120a0b)">
+        <h3 style="color:var(--red)">Hard constraints (non-negotiable)</h3>
+        <ul style="margin-bottom:0">
+          <li><strong>OAuth 2.1 + PKCE</strong> per user; bearer = identity, auth auto-handled.</li>
+          <li><strong>COD only · orders cannot be cancelled.</strong> Food cart <strong>&lt; ₹1000</strong> (beta). Dineout = free bookings only.</li>
+          <li><strong>No webhooks · no idempotency guarantee · no rate-limit doc.</strong> Tracking = poll-only.</li>
+          <li>"<strong>Keep the Swiggy app closed</strong>" — session conflict.</li>
+          <li>Prod for a 3rd-party webapp is <strong>approval-gated</strong> (localhost dev is open; submit video for prod creds).</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTEXT -->
+  <section id="context">
+    <h2><span class="num">02</span>System context</h2>
+<pre><span class="dim">         CHANNELS                     LAST BITE v2 (Vercel · bom1)                   EXTERNAL</span>
+┌──────────────────┐        ┌───────────────────────────────────────┐
+│  Web chat (PWA)  │──────▶ │  Next.js App Router + API               │        ┌───────────────────┐
+│  ChatGPT-style   │        │   ├─ Supabase Auth (accounts/session)   │──────▶ │ <b>Vercel AI Gateway</b> │──▶ Claude·Gemini
+├──────────────────┤        │   ├─ Chat orchestrator (tool loop)      │        │  creator/model    │    Grok·DeepSeek·GPT
+│ WhatsApp (Gupshup│◀─────▶ │   ├─ <vi>Workflow engine</vi> (triggers/runs)    │        └───────────────────┘
+│  notify+trigger) │        │   ├─ <ar>Guarded MCP proxy</ar> + <hot>SPENDING GATE</hot> │        ┌───────────────────┐
+├──────────────────┤        │   └─ Notifier (push·email·WhatsApp)     │──────▶ │ <b>Swiggy MCP</b>        │
+│ Scheduler (QStash│──────▶ │                                         │  OAuth │  /food /im /dineout│
+│  cron triggers)  │        └──────────────┬─────────────┬────────────┘  2.1   └───────────────────┘
+└──────────────────┘                       │             │  PKCE                ┌───────────────────┐
+                                ┌───────────▼──┐  ┌───────▼───────┐              │ Gupshup WA · QStash│
+                                │ <bl>Supabase PG</bl> │  │ <ar>Upstash Redis</ar> │              └───────────────────┘
+                                │ accounts·threads│ locks·grace·  │
+                                │ msgs·workflows  │ idem·dedup·RL │
+                                │ <hot>swiggy_tokens🔒</hot>│ (ephemeral)    │
+                                └──────────────┘  └───────────────┘</pre>
+    <p class="muted">Two data stores by intent: <strong>Supabase Postgres</strong> = durable, relational, RLS-isolated (the system of record incl. encrypted tokens); <strong>Upstash Redis</strong> = ephemeral safety primitives that need sub-ms atomic ops (locks, grace, idempotency). QStash drives anything time-based.</p>
+  </section>
+
+  <!-- LAYERS -->
+  <section id="layers">
+    <h2><span class="num">03</span>Layered HLD</h2>
+
+    <div class="lyr"><div class="lh">1 · Surfaces</div><div class="row">
+      <div class="box"><b>Web chat</b><span>Threads, history, model picker, workflow builder. Primary UX.</span></div>
+      <div class="box"><b>WhatsApp</b><span>Gupshup. Notify + one-tap YES/STOP. Not primary.</span></div>
+      <div class="box"><b>Scheduler</b><span>QStash cron fires saved workflows.</span></div>
+    </div></div>
+    <div class="down">▼</div>
+    <div class="lyr"><div class="lh">2 · Application (Next.js API, Fluid Compute)</div><div class="row">
+      <div class="box blue"><b>Auth</b><span>Supabase session → user_id. Gates every request.</span></div>
+      <div class="box violet"><b>Chat orchestrator</b><span>Streaming tool-calling loop. Loads thread memory, picks model, runs the turn.</span></div>
+      <div class="box violet"><b>Workflow engine</b><span>CRUD workflows; QStash schedules; runner executes saved prompts.</span></div>
+      <div class="box"><b>Notifier</b><span>Web push · email · WhatsApp template. Async-confirm delivery.</span></div>
+    </div></div>
+    <div class="down">▼</div>
+    <div class="lyr"><div class="lh">3 · Model layer</div><div class="row">
+      <div class="box green"><b>Vercel AI Gateway</b><span>One <code>creator/model</code> interface. Operator keys. Fallback + spend telemetry.</span></div>
+      <div class="box"><b>Model policy</b><span>Agentic threads → tool-reliable model; plain chat → user's pick. Per-provider tool-call verification.</span></div>
+    </div></div>
+    <div class="down">▼</div>
+    <div class="lyr"><div class="lh">4 · Guarded MCP layer &nbsp;— the safety boundary</div><div class="row">
+      <div class="box amber"><b>Per-user SwiggyClient</b><span>OAuth token from vault. One client per user per surface. Read tools pass through.</span></div>
+      <div class="box red"><b>★ Spending Gate interceptor</b><span>Wraps place_food_order · checkout · book_table. Kill-switch → mode → confirm → grace → idempotency → audit. <em>Non-bypassable.</em></span></div>
+    </div></div>
+    <div class="down">▼</div>
+    <div class="lyr"><div class="lh">5 · Data &amp; infra</div><div class="row">
+      <div class="box blue"><b>Supabase PG</b><span>System of record. RLS per user. Encrypted token vault.</span></div>
+      <div class="box amber"><b>Upstash Redis</b><span>locks · grace · idempotency · dedup · rate-limit.</span></div>
+      <div class="box"><b>QStash</b><span>cron + delayed messages (confirm timeout, tracking polls).</span></div>
+    </div></div>
+
+    <div class="callout blue"><p><strong>Why the gate sits in layer 4, not the prompt.</strong> Any model in layer 3, reached from any channel in
+    layer 1, can emit a <code>place_food_order</code> tool call. If the gate lived in a system prompt, a different model or a
+    jailbreak could skip it. Putting it in the MCP proxy — <em>below the model</em> — means the spend tools are physically
+    un-callable without passing it. This is the single most important structural decision in v2.</p></div>
+  </section>
+
+  <!-- THE GATE -->
+  <section id="gate">
+    <h2><span class="num">04</span>★ The Spending Gate (generalized 7-layer model)</h2>
+    <p>v1's safety lived inside a rigid LangGraph pipeline. v2 lifts it into a <strong>tool-call interceptor</strong> in the MCP
+    proxy so it works for an open tool-calling loop, any model, and any channel — sync or async. Read-only tools
+    (<code>search_*</code>, <code>get_*</code>, <code>track_*</code>) pass straight through. The three commit tools are intercepted.</p>
+<pre>model emits tool call ──▶ <b>GuardedMcpProxy.call(tool, args, ctx)</b>
+                              │
+        is it a SPEND tool?   │  place_food_order · checkout · book_table
+         ┌──────────no────────┴───────────yes──────────┐
+         ▼                                              ▼
+  execute on Swiggy MCP                      <hot>SPENDING GATE</hot>
+  (read-only / cart ops)              <ar>L1</ar> kill-switch  LB_REAL_ORDERS=1 ? else → demo result
+                                      <ar>L2</ar> user mode    connection.mode == live ? (default demo)
+                                      <ar>L3</ar> guardrails   cart &lt; ₹1000 · COD · dineout=free · surface caps
+                                      <ar>L4</ar> CONFIRM      emit pending_action; DO NOT execute yet
+                                                    ├─ sync (chat):  UI renders gate card → user YES
+                                                    └─ async (cron): notify → user YES within window
+                                      <ar>L5</ar> grace        30s STOP window after YES (cancellable)
+                                      <ar>L6</ar> idempotency  SETNX sha256(user·cart·day) — dup → no-op
+                                      <ar>L7</ar> mutex+audit   per-user lock; append immutable audit row
+                                              │ all pass
+                                              ▼
+                                      execute place/checkout/book on Swiggy MCP
+                                              ▼
+                                      <ok>audit: placed</ok> · idempotency held 24h · notify result</pre>
+    <div class="grid g2">
+      <div class="card">
+        <h3>What's new vs v1</h3>
+        <ul style="margin-bottom:0">
+          <li><span class="new">+</span> <strong>Interceptor, not pipeline</strong> — works for any model's tool loop.</li>
+          <li><span class="new">+</span> <strong>Async confirm path</strong> — <code>pending_action</code> row + notify + resume on YES (the D2 decision). Same gate, delivered over time.</li>
+          <li><span class="new">+</span> <strong>Generalized to 3 surfaces</strong> — checkout &amp; book_table get the same treatment as place_food_order.</li>
+          <li><span class="new">+</span> <strong>Immutable audit log</strong> in Supabase — every gate evaluation + outcome, joinable by request-id.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>What's preserved from v1</h3>
+        <ul style="margin-bottom:0">
+          <li><span class="keep">=</span> Two-layer kill switch (env + per-user mode, default demo).</li>
+          <li><span class="keep">=</span> 30s grace + 5-failure circuit breaker (Redis blip → cancel, never commit).</li>
+          <li><span class="keep">=</span> <code>sha256(user·cart·day)</code> idempotency, release-on-transient-failure.</li>
+          <li><span class="keep">=</span> Per-user mutex (TTL &gt; function budget), abandoned-thread auto-clear.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout red"><p><strong>Async-confirm safety rule (D2).</strong> A scheduled workflow can <em>prepare</em> a cart and
+    <em>ask</em>, but the gate's L4 still requires a real human YES — delivered via WhatsApp/push/email — before L5–L7 run.
+    If no YES arrives inside the window, the <code>pending_action</code> expires and nothing is placed. There is no "silent
+    auto-spend" path in v1 scope.</p></div>
+  </section>
+
+  <!-- MODELS -->
+  <section id="models">
+    <h2><span class="num">05</span>Multi-model gateway (D1)</h2>
+    <div class="grid g2">
+      <div>
+        <h3>Design</h3>
+        <ul>
+          <li><strong>One interface:</strong> Vercel AI Gateway with <code>creator/model</code> strings (OpenClaw-style), e.g. <code>anthropic/claude-…</code>, <code>google/gemini-…</code>, <code>xai/grok-…</code>, <code>deepseek/…</code>.</li>
+          <li><strong>Full OpenClaw-style catalog (D8):</strong> also OpenAI, Mistral, Groq, and <strong>OpenRouter as a meta-provider</strong> for the long tail. A curated default list + dynamic fetch; one picker, grouped by provider.</li>
+          <li><strong>Operator keys, server-side.</strong> You supply provider keys; stored as Vercel env / Gateway config — never in the browser. Users only choose a label.</li>
+          <li><strong>Failover</strong> (OpenClaw pattern): primary + fallback per role; retry only on 429/quota, not on tool errors.</li>
+          <li><strong>Model policy by thread type:</strong> a thread that may call Swiggy tools is pinned to a tool-reliable model; a plain Q&amp;A thread can use any.</li>
+          <li><strong>Spend observability</strong> from the Gateway feeds the audit/ops view.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Key handling (LibreChat-informed)</h3>
+        <ul style="margin-bottom:.4em">
+          <li><strong>v1:</strong> operator keys only — simplest, you fund it, users just pick.</li>
+          <li><strong>v2 (optional) BYOK:</strong> if users bring their own provider key, store it AES-encrypted in Supabase (app key + per-row IV), decrypt only at call time. Mirrors LibreChat's <code>CREDS_KEY</code>/<code>CREDS_IV</code>.</li>
+        </ul>
+        <div class="callout" style="margin:.4em 0 0"><p style="font-size:13px"><strong>Tool-call caveat (verified in research):</strong> some models (notably Gemini via certain gateways) drop large tool-call blocks. We <strong>verify each model's MCP tool-calling</strong> in CI and mark non-passing models "chat-only" in the picker.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- AUTH -->
+  <section id="auth">
+    <h2><span class="num">06</span>Auth &amp; token vault (D3)</h2>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Two distinct identities</h3>
+        <ul style="margin-bottom:0">
+          <li><strong>App identity</strong> — Supabase Auth (email / Google OAuth). Issues the session; every API call resolves a <code>user_id</code>.</li>
+          <li><strong>Swiggy identity</strong> — separate per-user OAuth 2.1 + PKCE connection to Swiggy MCP. A user logs into Last Bite, then "Connect Swiggy" once.</li>
+          <li>The two are linked in <code>swiggy_connections(user_id → encrypted token, scopes, expiry)</code>.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Token vault</h3>
+        <ul style="margin-bottom:0">
+          <li><strong>At rest:</strong> AES-256-GCM, app key from secret manager, per-row IV+salt, in Supabase. <strong>RLS</strong> so a row is only readable by its owner's authenticated context.</li>
+          <li><strong>Decrypt</strong> only inside <code>SwiggyClient</code> construction, server-side. Never to the client, never logged.</li>
+          <li><strong>Refresh:</strong> use the refresh_token; on 401 from Swiggy, attempt refresh once, else mark connection stale → prompt reconnect.</li>
+          <li><strong>Redaction</strong> middleware (kept from v1) strips <code>Bearer ey…</code> / JWT shapes from every log + error.</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout green"><p>This replaces the v1 <strong>BYOC / Claude-Desktop token-paste</strong> entirely. The PKCE + dynamic-client-registration
+    code already in <span class="path">lib/swiggy-oauth.ts</span> is resurrected as the primary connect flow — for dev it runs against
+    <code>http://localhost</code> (Swiggy allows this with no approval); for prod we submit the Builders Club application.</p></div>
+  </section>
+
+  <!-- CHAT -->
+  <section id="chat">
+    <h2><span class="num">07</span>Chat system (ChatGPT/Claude-style)</h2>
+    <div class="grid g3">
+      <div class="card"><h3>Threads</h3><p style="margin:0;font-size:13.4px" class="muted">Left rail lists past conversations; new-chat; rename/delete. Each thread pins a model + (optional) a Swiggy surface scope.</p></div>
+      <div class="card"><h3>Memory / context</h3><p style="margin:0;font-size:13.4px" class="muted">Full message history persisted in Supabase; the turn loads a rolling window (+ summary of older turns) so the model has continuity. Tool calls + results are part of the transcript.</p></div>
+      <div class="card"><h3>Turn loop</h3><p style="margin:0;font-size:13.4px" class="muted">Streaming tool-calling loop: model ↔ Guarded MCP proxy until no more tool calls, then final answer streams. Spend tools surface a gate card inline.</p></div>
+    </div>
+    <p class="muted">Memory is scoped per <code>user_id</code> and per <code>thread_id</code> with RLS — one user's threads are invisible to another, enforced at the database, not just the app.</p>
+  </section>
+
+  <!-- WORKFLOWS -->
+  <section id="workflows">
+    <h2><span class="num">08</span>Workflow engine — the differentiator</h2>
+    <p>A <strong>workflow</strong> = a saved natural-language instruction + a trigger + a confirm policy. When the trigger fires,
+    the engine runs the instruction through the same agent loop and Guarded MCP proxy as interactive chat — so all safety
+    applies identically.</p>
+    <div class="grid g2">
+      <div>
+        <h3>Anatomy</h3>
+<pre>workflow {
+  name:      <bl>"Friday dinner — my usual"</bl>
+  trigger:   <vi>{ type: cron, expr: "0 20 * * 5", tz: "Asia/Kolkata" }</vi>
+              <dim>| { type: manual } | { type: keyword, on: "restock" }</dim>
+  prompt:    <bl>"Order 1 Paradise chicken biryani to Home,
+              best coupon, under ₹600."</bl>
+  surface:   food            <dim>// food | instamart | dineout</dim>
+  confirm:   <ar>async</ar>           <dim>// D2: notify, place only on YES</dim>
+  window:    30m             <dim>// YES must arrive within</dim>
+}</pre>
+      </div>
+      <div>
+        <h3>Trigger types (v1)</h3>
+        <ul>
+          <li><strong>Manual</strong> — "run now" button.</li>
+          <li><strong>Scheduled</strong> — QStash cron (the headline: "every Friday 8pm…").</li>
+          <li><strong>Keyword</strong> — a phrase in chat/WhatsApp runs a saved workflow.</li>
+        </ul>
+        <h3>Run lifecycle</h3>
+        <p class="muted" style="font-size:13.4px">QStash fires → <code>workflow_runs</code> row (queued) → agent builds cart → Spending Gate L4 emits <code>pending_action</code> + notify → user YES → place → run = done. No YES in window → run = expired, nothing placed.</p>
+      </div>
+    </div>
+    <div class="callout"><p><strong>"Restock when low" — honest scoping.</strong> Swiggy MCP exposes no pantry/inventory signal, so true depletion
+    prediction isn't possible from MCP data alone. v1 models it as <strong>scheduled cadence</strong> ("every 10 days") or a
+    <strong>user-declared</strong> "we're out of X" keyword trigger — not a magic sensor. The predictive Poisson model is a
+    later, opt-in addition, clearly labeled as an estimate.</p></div>
+  </section>
+
+  <!-- WHATSAPP -->
+  <section id="whatsapp">
+    <h2><span class="num">09</span>WhatsApp channel (D4 · Gupshup, notify + trigger)</h2>
+    <div class="grid g2">
+      <div>
+        <h3>Role</h3>
+        <ul>
+          <li><strong>Outbound:</strong> async-confirm prompts ("Cart ready ₹540, reply YES in 30 min"), order-placed receipts, tracking nudges.</li>
+          <li><strong>Inbound:</strong> YES/STOP to resolve a <code>pending_action</code>; keyword to trigger a saved workflow.</li>
+          <li>Number is linked to the account during onboarding (so inbound maps to a <code>user_id</code>).</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Compliance (built in)</h3>
+        <ul style="margin-bottom:0">
+          <li><strong>24-hour session window</strong> — free-form replies only after the user messages us; outside it requires <strong>pre-approved templates</strong> (utility category for confirms).</li>
+          <li><strong>Webhook signature/secret</strong>, fail-closed in prod (kept from v1, verified → 403).</li>
+          <li>Inbound dedup by message-id (<code>msg:</code> key). YES is just another route into the Spending Gate L4 resume.</li>
+          <li><span class="kill">✗</span> No Baileys/unofficial bridges — ban risk, never gate COD on them.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- SECURITY -->
+  <section id="security">
+    <h2><span class="num">10</span>Security model (MCP + webapp)</h2>
+    <table>
+      <thead><tr><th>Surface</th><th>Control</th></tr></thead>
+      <tbody>
+        <tr><td>Swiggy token at rest</td><td>AES-256-GCM in Supabase, per-row IV, app key in secret manager, <strong>RLS</strong> owner-only read. Decrypt only in SwiggyClient.</td></tr>
+        <tr><td>Tenant isolation</td><td>Postgres <strong>Row-Level Security</strong> on every user-owned table — isolation enforced at the DB, not just app code.</td></tr>
+        <tr><td>Spend authority</td><td>Spending Gate is the <em>only</em> path to commit tools; non-bypassable by model/prompt/channel. Self-serve per-user demo→live toggle (default demo) under a global <code>LB_REAL_ORDERS</code> operator master — public deploys stay demo until Swiggy prod approval.</td></tr>
+        <tr><td>MCP transport</td><td>OAuth 2.1 + PKCE; bearer in Authorization header only; one client per user; never shared across users.</td></tr>
+        <tr><td>Secrets in logs</td><td>Redaction middleware strips Bearer/JWT; request-id + user-id correlation via AsyncLocalStorage.</td></tr>
+        <tr><td>Webapp auth</td><td>Supabase Auth sessions (HttpOnly, Secure, SameSite); server-side authorization on every API route.</td></tr>
+        <tr><td>Webhooks</td><td>Gupshup secret verify, fail-closed in production; inbound dedup.</td></tr>
+        <tr><td>Abuse</td><td>Per-IP + per-user rate limits (Upstash); model-spend caps via Gateway; audit log for forensics.</td></tr>
+        <tr><td>Prompt-injection &amp; money</td><td>Even if a malicious restaurant name / tool result tries to coerce an order, the gate's human-YES (L4) + kill-switch (L1) + caps (L3) bound the blast radius. Tool results are untrusted input.</td></tr>
+        <tr><td>DPDP</td><td>Explicit consent on connect; 30-day TTLs; data-export + delete ("forget me"); privacy page; minimal PII (phone + tokens only).</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- DATA -->
+  <section id="data">
+    <h2><span class="num">11</span>Data model</h2>
+    <div class="grid g2">
+      <div>
+        <h3>Supabase Postgres (RLS on all)</h3>
+        <table>
+          <thead><tr><th>Table</th><th>Holds</th></tr></thead>
+          <tbody>
+            <tr><td><code>users</code></td><td>Supabase Auth identity</td></tr>
+            <tr><td><code>swiggy_connections</code></td><td>🔒 encrypted token, scopes, expiry, mode (demo/live)</td></tr>
+            <tr><td><code>threads</code></td><td>title, model, surface scope</td></tr>
+            <tr><td><code>messages</code></td><td>role, content, tool calls + results</td></tr>
+            <tr><td><code>workflows</code></td><td>name, trigger, prompt, surface, confirm policy</td></tr>
+            <tr><td><code>workflow_runs</code></td><td>status, cart, timing, outcome</td></tr>
+            <tr><td><code>pending_actions</code></td><td>spend awaiting YES: cart, channel, expiry</td></tr>
+            <tr><td><code>audit_log</code></td><td>immutable gate evaluations + order outcomes</td></tr>
+            <tr><td><code>wa_links</code></td><td>phone ↔ user_id mapping</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div>
+        <h3>Upstash Redis (ephemeral)</h3>
+        <table>
+          <thead><tr><th>Key</th><th>TTL · purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>lock:user:&lt;id&gt;</code></td><td>180s · mutex</td></tr>
+            <tr><td><code>grace:&lt;ref&gt;</code></td><td>~35s · STOP window</td></tr>
+            <tr><td><code>idem:&lt;sha&gt;</code></td><td>24h · dedup commit</td></tr>
+            <tr><td><code>msg:&lt;id&gt;</code></td><td>24h · WhatsApp dedup</td></tr>
+            <tr><td><code>rl:*</code></td><td>sliding · rate-limit</td></tr>
+          </tbody>
+        </table>
+        <h3>QStash</h3>
+        <p class="muted" style="font-size:13.2px;margin:0">Cron schedules per workflow · delayed message = async-confirm timeout · recurring tracking polls (adaptive backoff, stop on terminal).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FLOW ORDER -->
+  <section id="flow-order">
+    <h2><span class="num">12</span>Flow · interactive order (chat)</h2>
+<pre>user: <bl>"order paneer biryani from Paradise to home under ₹500"</bl>
+  │
+  ▼ chat orchestrator (model = Claude, surface = food)
+  loop: model → <ar>GuardedMcpProxy</ar> → Swiggy MCP
+        get_addresses → search_restaurants → search_menu → update_food_cart → get_food_cart   <dim>(all read/cart: pass-through)</dim>
+  ▼ model calls <hot>place_food_order</hot>
+  <hot>GATE</hot>: L1 live? · L2 mode? · L3 ₹482&lt;1000 ✓ COD ✓
+        L4 → emit gate card: <bl>"Cart ₹482, ~1100 kcal, ETA 38m. Place? YES / STOP"</bl>  <dim>(does NOT execute)</dim>
+  ▼ user: YES
+  L5 grace 30s (STOP cancels) → L6 idem SETNX ✓ → L7 lock + audit
+  ▼ execute place_food_order  → <ok>"Swiggy order placed ✓ #2371…"</ok>  → audit: placed · Powered by Swiggy</pre>
+  </section>
+
+  <!-- FLOW AUTO -->
+  <section id="flow-auto">
+    <h2><span class="num">13</span>Flow · scheduled auto-order (async confirm — D2)</h2>
+<pre><vi>QStash cron</vi> Fri 20:00 IST ─▶ workflow_runs(queued) ─▶ runner loads saved prompt + user's Swiggy token
+  ▼ agent builds cart (read/cart tools, pass-through)
+  ▼ model calls <hot>checkout/place</hot>  →  <hot>GATE</hot> L1·L2·L3 pass
+  L4 confirm = <ar>async</ar>:  write <bl>pending_action(cart, expires=+30m)</bl>
+                          notify via WhatsApp template: <bl>"Your Friday usual: ₹540. Reply YES in 30 min, or STOP."</bl>
+  ┌───────────────── user replies within 30m ─────────────────┐
+  │  YES → resume gate L5 grace → L6 idem → L7 → <ok>place ✓</ok> notify receipt
+  │  STOP → pending_action=cancelled, run=cancelled, notify
+  └─ no reply → pending_action <hot>expires</hot> → run=expired → <ok>nothing placed</ok> (notify "skipped")</pre>
+    <p class="muted">Same gate, same audit trail — only L4's delivery is deferred. No code path places without a human YES.</p>
+  </section>
+
+  <!-- FLOW OAUTH -->
+  <section id="flow-oauth">
+    <h2><span class="num">14</span>Flow · connect Swiggy (native OAuth 2.1 + PKCE)</h2>
+<pre>app (logged in) ─▶ "Connect Swiggy" ─▶ build PKCE (verifier/challenge) + state
+   ▼ redirect to <b>mcp.swiggy.com/auth/authorize</b> ?client_id&amp;code_challenge=S256&amp;redirect_uri&amp;state
+   ▼ user completes Swiggy OTP on Swiggy's domain  <dim>(we never see the OTP)</dim>
+   ▼ callback ?code&amp;state ─▶ verify state ─▶ exchange code+verifier at /auth/token
+   ▼ receive access+refresh tokens ─▶ <hot>AES-256-GCM encrypt</hot> ─▶ swiggy_connections (RLS, owner-only)
+   ▼ ready. <dim>dev: redirect_uri=http://localhost (Swiggy allows, no approval) · prod: Builders Club approved URI</dim></pre>
+  </section>
+
+  <!-- REMOVE/KEEP/BUILD -->
+  <section id="remove">
+    <h2><span class="num">15</span>Remove · keep · build</h2>
+    <div class="grid g3">
+      <div class="card" style="border-color:#5a1a22">
+        <h3 style="color:var(--red)">Remove</h3>
+        <ul style="margin-bottom:0">
+          <li>BYOC token-paste flow (<span class="path">/connect</span> paste, <span class="path">oauth/byoc</span>)</li>
+          <li>All Claude-Desktop setup copy/docs</li>
+          <li><code>LASTBITE_OFFLINE</code> / <code>USE_FIXTURES</code> as a product mode (keep a thin test-only shim)</li>
+          <li>Dead/confused model env (<code>LASTBITE_AGENT_MODEL</code>, <code>SKIP_TOKEN_VALIDATION</code>)</li>
+          <li>Single hard-wired Groq+Anthropic split</li>
+        </ul>
+      </div>
+      <div class="card" style="border-color:#214066">
+        <h3 style="color:var(--blue)">Keep / generalize</h3>
+        <ul style="margin-bottom:0">
+          <li>The 7-layer safety → Spending Gate interceptor</li>
+          <li><span class="path">swiggy-oauth.ts</span> PKCE+DCR → primary connect</li>
+          <li>Redaction, request-id correlation, redis safety primitives</li>
+          <li>"Powered by Swiggy" everywhere; DPDP posture</li>
+          <li>Gupshup wiring + webhook fail-closed</li>
+        </ul>
+      </div>
+      <div class="card" style="border-color:#1d4536">
+        <h3 style="color:var(--green)">Build</h3>
+        <ul style="margin-bottom:0">
+          <li>Supabase Auth + schema + RLS + token vault</li>
+          <li>Vercel AI Gateway model layer + picker + failover</li>
+          <li>ChatGPT-style threads/memory UI</li>
+          <li>Guarded MCP proxy (3 surfaces) + async-confirm</li>
+          <li>Workflow engine + QStash triggers + runs</li>
+          <li>Notifier (push/email/WhatsApp) + tracking poller</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ROADMAP -->
+  <section id="roadmap">
+    <h2><span class="num">16</span>Phased roadmap</h2>
+    <table>
+      <thead><tr><th>Phase</th><th>Scope</th><th>Exit criteria</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sev p0">P1</span> Foundation</td><td>Greenfield Next.js scaffold; Supabase Auth (Google + magic-link) + schema + RLS; native Swiggy OAuth connect + encrypted vault. Spike: verify multi-tenant client_id + token refresh.</td><td>A user logs in, connects Swiggy on localhost, token sealed in Supabase, RLS-isolated.</td></tr>
+        <tr><td><span class="sev p0">P2</span> Chat + models</td><td>Vercel AI Gateway, model picker, threads/memory, streaming tool-calling loop over food surface.</td><td>Multi-turn chat with model choice; food read/cart tools work; thread history persists.</td></tr>
+        <tr><td><span class="sev p0">P3</span> Spending Gate</td><td>Guarded MCP proxy + gate L1–L7 (sync); generalize to instamart checkout + dineout book.</td><td>Smoke suite green incl. STOP-at-gate + idempotency across all 3 commit tools.</td></tr>
+        <tr><td><span class="sev p1">P4</span> Workflows</td><td>Workflow CRUD, QStash cron, runs, <strong>async-confirm</strong> + pending_actions + notifier (push/email).</td><td>"Friday 8pm" prepares a cart and asks; places only on YES; expires cleanly.</td></tr>
+        <tr><td><span class="sev p1">P5</span> WhatsApp</td><td>Gupshup outbound templates + inbound YES/STOP/keyword; number linking; tracking polls.</td><td>Async-confirm + receipts over WhatsApp, compliant with 24h window.</td></tr>
+        <tr><td><span class="sev p2">P6</span> Prod gate</td><td>Builders Club application + demo video; security review; observability/audit dashboards.</td><td>Swiggy prod credentials; real orders behind kill-switch for opted-in users.</td></tr>
+      </tbody>
+    </table>
+    <p class="muted">P1–P3 = a safe, multi-model Swiggy chat app. P4–P5 = the differentiator. P6 = the public-launch gate (Swiggy-controlled).</p>
+  </section>
+
+  <!-- RISKS -->
+  <section id="risks">
+    <h2><span class="num">17</span>Open items &amp; risks</h2>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Risks / watch-items</h3>
+        <ul style="margin-bottom:0">
+          <li><strong>Prod approval is Swiggy-gated.</strong> Full public launch waits on Builders Club creds — build now on localhost/preview against live MCP.</li>
+          <li><strong>Per-model tool-calling varies.</strong> Verify each model's MCP function-calling; mark failures chat-only.</li>
+          <li><strong>No Swiggy webhooks.</strong> Tracking is polling — cost/latency managed via QStash backoff.</li>
+          <li><strong>WhatsApp templates need Meta approval</strong> — lead time before P5 confirms can ship.</li>
+          <li><strong>"Keep Swiggy app closed"</strong> session conflict — surface as user guidance.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>Questions still open for you</h3>
+        <ul style="margin-bottom:0">
+          <li>Households (direction D) — in P4 scope, or after? (Adds shared-workflow + member roles.)</li>
+          <li>Email provider for notifications (Resend?) — confirm before P4.</li>
+          <li>Confirm-channel priority for scheduled orders (web push / email / WhatsApp) — and require ≥1 before a schedule can arm.</li>
+          <li>Brand/name — stay "Last Bite", or rename for the broader 3-surface scope?</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- REFS -->
+  <section id="refs">
+    <h2><span class="num">18</span>References</h2>
+    <ul>
+      <li><a href="https://github.com/openclaw/openclaw">OpenClaw</a> — model selection (<code>provider/model</code>), failover, multi-channel patterns we borrow.</li>
+      <li><a href="https://github.com/danny-avila/LibreChat">LibreChat</a> — multi-tenant API-key handling + at-rest encryption pattern.</li>
+      <li><a href="https://vercel.com/docs/ai-gateway/models-and-providers">Vercel AI Gateway</a> · <a href="https://www.truefoundry.com/blog/vercel-ai-gateway-vs-openrouter">Gateway vs OpenRouter</a> — model layer.</li>
+      <li><a href="https://github.com/Swiggy/swiggy-mcp-server-manifest">Swiggy MCP manifest</a> · <a href="https://mcp.swiggy.com/builders/docs/">Builders Club docs</a> — surfaces, OAuth 2.1+PKCE, constraints, prod path.</li>
+      <li><a href="https://codingclave.com/guides/whatsapp-api-pricing-india-2026-comparison">WhatsApp India pricing/compliance</a> — Gupshup vs Cloud API, 24h window + templates.</li>
+    </ul>
+    <p class="muted">Companion doc: <a href="deepanalysis.html">deepanalysis.html</a> — the v1 deep analysis this design builds on.</p>
+  </section>
+
+  </main>
+
+  <footer>
+    Last Bite v2 · architecture &amp; HLD · design draft for review. Not affiliated with Swiggy. Nothing implemented yet — on approval, this becomes a written spec + implementation plan.
+  </footer>
+
+</div>
+</body>
+</html>
